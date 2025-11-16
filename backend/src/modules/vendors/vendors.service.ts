@@ -4,7 +4,7 @@ import { GeminiService } from '../gemini/gemini.service';
 import { CreateVendorDto } from './dto/create-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
-import { VendorType, VendorCriticality, DocumentType } from '@prisma/client';
+import { VendorType, VendorCriticality, DocumentType, Prisma } from '@prisma/client';
 
 @Injectable()
 export class VendorsService {
@@ -21,7 +21,7 @@ export class VendorsService {
       search?: string;
     },
   ) {
-    const where: any = { tenantId };
+    const where: Prisma.VendorWhereInput = { tenantId };
 
     if (filters?.type) {
       where.type = filters.type;
@@ -71,8 +71,12 @@ export class VendorsService {
   }
 
   async findOne(id: string, tenantId: string) {
-    const vendor = await this.prisma.vendor.findUnique({
-      where: { id },
+    // Use findFirst with compound WHERE for tenant isolation at query level
+    const vendor = await this.prisma.vendor.findFirst({
+      where: {
+        id,
+        tenantId, // CRITICAL: Tenant isolation enforced in query
+      },
       include: {
         facts: true,
         documents: {
@@ -93,11 +97,6 @@ export class VendorsService {
       throw new NotFoundException('Vendor not found');
     }
 
-    // Ensure vendor belongs to the tenant
-    if (vendor.tenantId !== tenantId) {
-      throw new ForbiddenException('Access denied');
-    }
-
     return vendor;
   }
 
@@ -111,22 +110,35 @@ export class VendorsService {
   }
 
   async update(id: string, tenantId: string, dto: UpdateVendorDto) {
-    // First check if vendor exists and belongs to tenant
-    await this.findOne(id, tenantId);
-
-    return this.prisma.vendor.update({
-      where: { id },
+    // Update with compound WHERE clause for defense in depth
+    const vendor = await this.prisma.vendor.updateMany({
+      where: {
+        id,
+        tenantId, // CRITICAL: Ensures tenant isolation at query level
+      },
       data: dto,
     });
+
+    if (vendor.count === 0) {
+      throw new NotFoundException('Vendor not found or access denied');
+    }
+
+    // Return the updated vendor
+    return this.findOne(id, tenantId);
   }
 
   async delete(id: string, tenantId: string) {
-    // First check if vendor exists and belongs to tenant
-    await this.findOne(id, tenantId);
-
-    await this.prisma.vendor.delete({
-      where: { id },
+    // Delete with compound WHERE clause for defense in depth
+    const result = await this.prisma.vendor.deleteMany({
+      where: {
+        id,
+        tenantId, // CRITICAL: Ensures tenant isolation at query level
+      },
     });
+
+    if (result.count === 0) {
+      throw new NotFoundException('Vendor not found or access denied');
+    }
 
     return { message: 'Vendor deleted successfully' };
   }

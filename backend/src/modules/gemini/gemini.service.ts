@@ -177,21 +177,27 @@ Output ONLY valid JSON, no explanation.`;
   /**
    * Validate and normalize extraction results
    */
-  private validateAndNormalizeExtraction(data: any): VendorFactsExtraction {
+  private validateAndNormalizeExtraction(data: unknown): VendorFactsExtraction {
+    // Type guard to ensure data is an object
+    if (typeof data !== 'object' || data === null) {
+      throw new Error('Invalid extraction data: expected object');
+    }
+
+    const obj = data as Record<string, unknown>;
     return {
-      data_categories: Array.isArray(data.data_categories) ? data.data_categories : [],
-      regions: Array.isArray(data.regions) ? data.regions : [],
-      sub_processors: Array.isArray(data.sub_processors) ? data.sub_processors : [],
-      services_supported: data.services_supported || 'Not specified',
-      business_functions: data.business_functions || 'Not specified',
-      security_highlights: data.security_highlights || 'Not specified',
-      impact_if_compromised: ['low', 'medium', 'high'].includes(data.impact_if_compromised)
-        ? data.impact_if_compromised
+      data_categories: Array.isArray(obj.data_categories) ? obj.data_categories : [],
+      regions: Array.isArray(obj.regions) ? obj.regions : [],
+      sub_processors: Array.isArray(obj.sub_processors) ? obj.sub_processors : [],
+      services_supported: (typeof obj.services_supported === 'string' ? obj.services_supported : null) || 'Not specified',
+      business_functions: (typeof obj.business_functions === 'string' ? obj.business_functions : null) || 'Not specified',
+      security_highlights: (typeof obj.security_highlights === 'string' ? obj.security_highlights : null) || 'Not specified',
+      impact_if_compromised: ['low', 'medium', 'high'].includes(obj.impact_if_compromised as string)
+        ? (obj.impact_if_compromised as 'low' | 'medium' | 'high')
         : 'medium',
       regulatory_relevance: {
-        dora: data.regulatory_relevance?.dora === true,
-        nis2: data.regulatory_relevance?.nis2 === true,
-        ai_act: data.regulatory_relevance?.ai_act === true,
+        dora: (obj.regulatory_relevance as Record<string, unknown>)?.dora === true,
+        nis2: (obj.regulatory_relevance as Record<string, unknown>)?.nis2 === true,
+        ai_act: (obj.regulatory_relevance as Record<string, unknown>)?.ai_act === true,
       },
     };
   }

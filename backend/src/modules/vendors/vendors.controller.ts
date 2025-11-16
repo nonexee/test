@@ -12,7 +12,6 @@ import {
   UploadedFile,
   ParseFilePipe,
   MaxFileSizeValidator,
-  FileTypeValidator,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { VendorsService } from './vendors.service';
@@ -20,6 +19,7 @@ import { CreateVendorDto } from './dto/create-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { MagicByteFileValidator } from '../../common/validators/magic-byte-file.validator';
 import { CurrentUser, CurrentUserData } from '../../common/decorators/current-user.decorator';
 import { VendorType, VendorCriticality } from '@prisma/client';
 
@@ -73,8 +73,18 @@ export class VendorsController {
     @UploadedFile(
       new ParseFilePipe({
         validators: [
-          new MaxFileSizeValidator({ maxSize: 50 * 1024 * 1024 }), // 50MB
-          new FileTypeValidator({ fileType: /(pdf|doc|docx|txt|csv|xlsx)$/ }),
+          new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }), // 10MB (reduced from 50MB)
+          new MagicByteFileValidator({
+            allowedMimeTypes: [
+              'application/pdf',
+              'application/msword',
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              'text/plain',
+              'text/csv',
+              'application/vnd.ms-excel',
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ],
+          }),
         ],
       }),
     )

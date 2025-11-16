@@ -100,6 +100,7 @@ model User {
 
   @@index([tenantId])
   @@index([email])
+  @@index([tenantId, email])
   @@map("users")
 }
 
@@ -126,6 +127,11 @@ model Vendor {
   @@index([type])
   @@index([criticality])
   @@index([status])
+  // Composite indexes for common multi-tenant queries
+  @@index([tenantId, id])
+  @@index([tenantId, status])
+  @@index([tenantId, type])
+  @@index([tenantId, criticality])
   @@map("vendors")
 }
 

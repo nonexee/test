@@ -1,8 +1,756 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useAuth } from '@/lib/auth';
+import apiClient from '@/lib/api';
+
+interface VendorDetail {
+  id: string;
+  name: string;
+  type: string;
+  criticality: string;
+  status: string;
+  documents: Array<{
+    id: string;
+    fileName: string;
+    fileType: string;
+    uploadedAt: string;
+  }>;
+  facts: {
+    data_categories: string[];
+    regions: string[];
+    sub_processors: Array<{ name: string; region: string; role: string }>;
+    services_supported: string;
+    business_functions: string;
+    security_highlights: string;
+    impact_if_compromised: string;
+    regulatory_relevance: {
+      dora: boolean;
+      nis2: boolean;
+      ai_act: boolean;
+    };
+    lastExtractedAt: string;
+  } | null;
+  extractionJobs: Array<{
+    id: string;
+    status: string;
+    createdAt: string;
+    completedAt: string | null;
+  }>;
+}
+
+interface SourceResult {
+  statement: string;
+  sources: Array<{
+    documentId: string;
+    fileName: string;
+    chunk: string;
+    relevanceScore: number;
+  }>;
+}
+
 export default function VendorDetailPage({ params }: { params: { id: string } }) {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  const [vendor, setVendor] = useState<VendorDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [showSourcesFor, setShowSourcesFor] = useState<string | null>(null);
+  const [sources, setSources] = useState<SourceResult | null>(null);
+  const [loadingSources, setLoadingSources] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/auth/login');
+      return;
+    }
+
+    if (user) {
+      fetchVendorDetail();
+    }
+  }, [user, authLoading, params.id]);
+
+  const fetchVendorDetail = async () => {
+    try {
+      setLoading(true);
+      const response = await apiClient.get(`/vendors/${params.id}`);
+      setVendor(response.data);
+      setError('');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to fetch vendor details');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const allowedTypes = [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain',
+        'text/csv',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ];
+
+      if (!allowedTypes.includes(file.type)) {
+        setUploadError('Invalid file type. Please upload PDF, DOCX, TXT, CSV, XLS, or XLSX files.');
+        return;
+      }
+
+      setSelectedFile(file);
+      setUploadError('');
+    }
+  };
+
+  const handleFileUpload = async () => {
+    if (!selectedFile) return;
+
+    try {
+      setUploadingFile(true);
+      setUploadError('');
+
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      await apiClient.post(`/vendors/${params.id}/documents`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      setSelectedFile(null);
+      // Reset file input
+      const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
+
+      // Refresh vendor data
+      await fetchVendorDetail();
+    } catch (err: any) {
+      setUploadError(err.response?.data?.message || 'Failed to upload document');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleTriggerExtraction = async () => {
+    try {
+      setExtracting(true);
+      setExtractError('');
+
+      await apiClient.post(`/vendors/${params.id}/extract`);
+
+      // Refresh vendor data to show new extraction job
+      await fetchVendorDetail();
+    } catch (err: any) {
+      setExtractError(err.response?.data?.message || 'Failed to trigger extraction');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleShowSources = async (statement: string) => {
+    if (showSourcesFor === statement) {
+      setShowSourcesFor(null);
+      setSources(null);
+      return;
+    }
+
+    try {
+      setLoadingSources(true);
+      setShowSourcesFor(statement);
+
+      const response = await apiClient.get(`/vendors/${params.id}/sources`, {
+        params: { statement },
+      });
+
+      setSources(response.data);
+    } catch (err: any) {
+      console.error('Failed to fetch sources:', err);
+      setSources(null);
+    } finally {
+      setLoadingSources(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const getCriticalityColor = (criticality: string) => {
+    switch (criticality) {
+      case 'CRITICAL':
+        return 'bg-red-100 text-red-800';
+      case 'HIGH':
+        return 'bg-orange-100 text-orange-800';
+      case 'MEDIUM':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'LOW':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'ACTIVE':
+        return 'bg-green-100 text-green-800';
+      case 'INACTIVE':
+        return 'bg-gray-100 text-gray-800';
+      case 'PENDING':
+        return 'bg-yellow-100 text-yellow-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getJobStatusColor = (status: string) => {
+    switch (status) {
+      case 'COMPLETED':
+        return 'bg-green-100 text-green-800';
+      case 'FAILED':
+        return 'bg-red-100 text-red-800';
+      case 'PROCESSING':
+        return 'bg-blue-100 text-blue-800';
+      case 'PENDING':
+        return 'bg-yellow-100 text-yellow-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  if (authLoading || !user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-gray-600">Loading...</div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-gray-600">Loading vendor details...</div>
+      </div>
+    );
+  }
+
+  if (error || !vendor) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-red-100 text-red-700 p-4 rounded-lg">
+            {error || 'Vendor not found'}
+          </div>
+          <Link
+            href="/vendors"
+            className="mt-4 inline-block text-blue-600 hover:text-blue-800"
+          >
+            Back to Vendors
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-4">Vendor Detail: {params.id}</h1>
-      <p className="text-gray-600">Vendor detail page - To be implemented in Phase 5</p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="mb-6">
+          <Link
+            href="/vendors"
+            className="text-blue-600 hover:text-blue-800 mb-2 inline-block"
+          >
+            &larr; Back to Vendors
+          </Link>
+          <h1 className="text-3xl font-bold text-gray-900">{vendor.name}</h1>
+          <p className="text-gray-600 mt-1">Vendor Details and Documentation</p>
+        </div>
+
+        {/* Vendor Information Card */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">Vendor Information</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div>
+              <div className="text-sm text-gray-500 mb-1">Type</div>
+              <div className="font-medium">{vendor.type.replace(/_/g, ' ')}</div>
+            </div>
+            <div>
+              <div className="text-sm text-gray-500 mb-1">Criticality</div>
+              <span
+                className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getCriticalityColor(
+                  vendor.criticality
+                )}`}
+              >
+                {vendor.criticality}
+              </span>
+            </div>
+            <div>
+              <div className="text-sm text-gray-500 mb-1">Status</div>
+              <span
+                className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(
+                  vendor.status
+                )}`}
+              >
+                {vendor.status}
+              </span>
+            </div>
+            <div>
+              <div className="text-sm text-gray-500 mb-1">Documents</div>
+              <div className="font-medium">{vendor.documents.length}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Documents Section */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">Documents</h2>
+
+          {/* Upload Section */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <h3 className="font-medium mb-3">Upload New Document</h3>
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <input
+                  id="file-upload"
+                  type="file"
+                  accept=".pdf,.docx,.txt,.csv,.xls,.xlsx"
+                  onChange={handleFileSelect}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Accepted formats: PDF, DOCX, TXT, CSV, XLS, XLSX
+                </p>
+              </div>
+              <button
+                onClick={handleFileUpload}
+                disabled={!selectedFile || uploadingFile}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {uploadingFile ? 'Uploading...' : 'Upload'}
+              </button>
+            </div>
+            {uploadError && (
+              <div className="mt-2 text-sm text-red-600">{uploadError}</div>
+            )}
+          </div>
+
+          {/* Documents List */}
+          {vendor.documents.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No documents uploaded yet. Upload a document to get started.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      File Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Type
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Uploaded At
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {vendor.documents.map((doc) => (
+                    <tr key={doc.id}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{doc.fileName}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-500">{doc.fileType}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-500">{formatDate(doc.uploadedAt)}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Extracted Facts Section */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Extracted Facts</h2>
+            <button
+              onClick={handleTriggerExtraction}
+              disabled={extracting || vendor.documents.length === 0}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {extracting ? 'Triggering...' : 'Trigger Extraction'}
+            </button>
+          </div>
+
+          {extractError && (
+            <div className="mb-4 p-3 bg-red-100 text-red-700 rounded text-sm">
+              {extractError}
+            </div>
+          )}
+
+          {vendor.documents.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              Upload documents first to extract facts.
+            </div>
+          )}
+
+          {vendor.documents.length > 0 && !vendor.facts && (
+            <div className="text-center py-8 text-gray-500">
+              No facts extracted yet. Click "Trigger Extraction" to analyze documents.
+            </div>
+          )}
+
+          {vendor.facts && (
+            <div className="space-y-6">
+              {/* Last Extracted */}
+              <div className="text-sm text-gray-500 mb-4">
+                Last extracted: {formatDate(vendor.facts.lastExtractedAt)}
+              </div>
+
+              {/* Data Categories */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-medium text-gray-900">Data Categories</div>
+                  <button
+                    onClick={() => handleShowSources('data_categories')}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {showSourcesFor === 'data_categories' ? 'Hide Sources' : 'Show Sources'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {vendor.facts.data_categories.map((category, idx) => (
+                    <span
+                      key={idx}
+                      className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                    >
+                      {category}
+                    </span>
+                  ))}
+                </div>
+                {showSourcesFor === 'data_categories' && (
+                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                )}
+              </div>
+
+              {/* Regions */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-medium text-gray-900">Regions</div>
+                  <button
+                    onClick={() => handleShowSources('regions')}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {showSourcesFor === 'regions' ? 'Hide Sources' : 'Show Sources'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {vendor.facts.regions.map((region, idx) => (
+                    <span
+                      key={idx}
+                      className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm"
+                    >
+                      {region}
+                    </span>
+                  ))}
+                </div>
+                {showSourcesFor === 'regions' && (
+                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                )}
+              </div>
+
+              {/* Sub-processors */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-medium text-gray-900">Sub-processors</div>
+                  <button
+                    onClick={() => handleShowSources('sub_processors')}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {showSourcesFor === 'sub_processors' ? 'Hide Sources' : 'Show Sources'}
+                  </button>
+                </div>
+                {vendor.facts.sub_processors.length === 0 ? (
+                  <div className="text-sm text-gray-500">None identified</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">
+                            Name
+                          </th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">
+                            Region
+                          </th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">
+                            Role
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {vendor.facts.sub_processors.map((sp, idx) => (
+                          <tr key={idx}>
+                            <td className="px-4 py-2 text-sm text-gray-900">{sp.name}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{sp.region}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{sp.role}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {showSourcesFor === 'sub_processors' && (
+                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                )}
+              </div>
+
+              {/* Services Supported */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-medium text-gray-900">Services Supported</div>
+                  <button
+                    onClick={() => handleShowSources('services_supported')}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {showSourcesFor === 'services_supported' ? 'Hide Sources' : 'Show Sources'}
+                  </button>
+                </div>
+                <div className="text-sm text-gray-700">{vendor.facts.services_supported}</div>
+                {showSourcesFor === 'services_supported' && (
+                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                )}
+              </div>
+
+              {/* Business Functions */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-medium text-gray-900">Business Functions</div>
+                  <button
+                    onClick={() => handleShowSources('business_functions')}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {showSourcesFor === 'business_functions' ? 'Hide Sources' : 'Show Sources'}
+                  </button>
+                </div>
+                <div className="text-sm text-gray-700">{vendor.facts.business_functions}</div>
+                {showSourcesFor === 'business_functions' && (
+                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                )}
+              </div>
+
+              {/* Security Highlights */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-medium text-gray-900">Security Highlights</div>
+                  <button
+                    onClick={() => handleShowSources('security_highlights')}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {showSourcesFor === 'security_highlights' ? 'Hide Sources' : 'Show Sources'}
+                  </button>
+                </div>
+                <div className="text-sm text-gray-700">{vendor.facts.security_highlights}</div>
+                {showSourcesFor === 'security_highlights' && (
+                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                )}
+              </div>
+
+              {/* Impact if Compromised */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-medium text-gray-900">Impact if Compromised</div>
+                  <button
+                    onClick={() => handleShowSources('impact_if_compromised')}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {showSourcesFor === 'impact_if_compromised' ? 'Hide Sources' : 'Show Sources'}
+                  </button>
+                </div>
+                <div className="text-sm text-gray-700">{vendor.facts.impact_if_compromised}</div>
+                {showSourcesFor === 'impact_if_compromised' && (
+                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                )}
+              </div>
+
+              {/* Regulatory Relevance */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-medium text-gray-900">Regulatory Relevance</div>
+                  <button
+                    onClick={() => handleShowSources('regulatory_relevance')}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {showSourcesFor === 'regulatory_relevance' ? 'Hide Sources' : 'Show Sources'}
+                  </button>
+                </div>
+                <div className="flex gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">DORA:</span>
+                    <span
+                      className={`px-2 py-1 text-xs rounded ${
+                        vendor.facts.regulatory_relevance.dora
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {vendor.facts.regulatory_relevance.dora ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">NIS2:</span>
+                    <span
+                      className={`px-2 py-1 text-xs rounded ${
+                        vendor.facts.regulatory_relevance.nis2
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {vendor.facts.regulatory_relevance.nis2 ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">AI Act:</span>
+                    <span
+                      className={`px-2 py-1 text-xs rounded ${
+                        vendor.facts.regulatory_relevance.ai_act
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {vendor.facts.regulatory_relevance.ai_act ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                </div>
+                {showSourcesFor === 'regulatory_relevance' && (
+                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Extraction Jobs History */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-semibold mb-4">Extraction Jobs History</h2>
+          {vendor.extractionJobs.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No extraction jobs yet.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Job ID
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Created At
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Completed At
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {vendor.extractionJobs.map((job) => (
+                    <tr key={job.id}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-mono text-gray-900">{job.id.slice(0, 8)}...</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getJobStatusColor(
+                            job.status
+                          )}`}
+                        >
+                          {job.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-500">{formatDate(job.createdAt)}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-500">
+                          {job.completedAt ? formatDate(job.completedAt) : '-'}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SourcesDisplay({
+  sources,
+  loading,
+}: {
+  sources: SourceResult | null;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+        <div className="text-sm text-gray-600">Loading sources...</div>
+      </div>
+    );
+  }
+
+  if (!sources || sources.sources.length === 0) {
+    return (
+      <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+        <div className="text-sm text-gray-600">No sources found</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 p-3 bg-gray-50 rounded-lg space-y-3">
+      {sources.sources.map((source, idx) => (
+        <div key={idx} className="p-3 bg-white rounded border border-gray-200">
+          <div className="flex justify-between items-start mb-2">
+            <div className="text-xs font-medium text-gray-900">{source.fileName}</div>
+            <div className="text-xs text-gray-500">
+              Score: {(source.relevanceScore * 100).toFixed(1)}%
+            </div>
+          </div>
+          <div className="text-sm text-gray-700 italic">"{source.chunk}"</div>
+        </div>
+      ))}
     </div>
   );
 }

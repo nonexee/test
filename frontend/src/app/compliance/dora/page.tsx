@@ -25,7 +25,7 @@ interface DoraVendor {
       nis2: boolean;
       ai_act: boolean;
     };
-    lastExtractedAt: string;
+    lastExtractionAt: string;
   };
 }
 
@@ -107,7 +107,7 @@ export default function DoraRegisterPage() {
       vendor.facts.regulatoryRelevance.dora ? 'Yes' : 'No',
       vendor.facts.regulatoryRelevance.nis2 ? 'Yes' : 'No',
       vendor.facts.regulatoryRelevance.ai_act ? 'Yes' : 'No',
-      new Date(vendor.facts.lastExtractedAt).toLocaleDateString(),
+      new Date(vendor.facts.lastExtractionAt).toLocaleDateString(),
     ]);
 
     // Escape CSV values and prevent formula injection (XSS mitigation)

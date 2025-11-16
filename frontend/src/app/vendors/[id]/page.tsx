@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import axios from 'axios';
 import { useAuth } from '@/lib/auth';
 import apiClient from '@/lib/api';
 
@@ -109,8 +110,13 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       const response = await apiClient.get(`/vendors/${params.id}`);
       setVendor(response.data);
       setError('');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to fetch vendor details');
+    } catch (err) {
+      const errorMessage = axios.isAxiosError(err)
+        ? err.response?.data?.message || 'Failed to fetch vendor details'
+        : err instanceof Error
+        ? err.message
+        : 'Unknown error occurred';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -172,8 +178,13 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
 
       // Refresh vendor data
       await fetchVendorDetail();
-    } catch (err: any) {
-      setUploadError(err.response?.data?.message || 'Failed to upload document');
+    } catch (err) {
+      const errorMessage = axios.isAxiosError(err)
+        ? err.response?.data?.message || 'Failed to upload document'
+        : err instanceof Error
+        ? err.message
+        : 'Unknown error occurred';
+      setUploadError(errorMessage);
     } finally {
       setUploadingFile(false);
     }
@@ -189,8 +200,13 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       // Refresh vendor data to show new extraction job
       // Don't set extracting to false - let polling handle it
       await fetchVendorDetail();
-    } catch (err: any) {
-      setExtractError(err.response?.data?.message || 'Failed to trigger extraction');
+    } catch (err) {
+      const errorMessage = axios.isAxiosError(err)
+        ? err.response?.data?.message || 'Failed to trigger extraction'
+        : err instanceof Error
+        ? err.message
+        : 'Unknown error occurred';
+      setExtractError(errorMessage);
       setExtracting(false); // Only set to false on error
     }
   };
@@ -211,7 +227,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       });
 
       setSources(response.data);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to fetch sources:', err);
       setSources(null);
     } finally {

@@ -15,6 +15,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { VendorsService } from './vendors.service';
 import { CreateVendorDto } from './dto/create-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
@@ -70,6 +71,7 @@ export class VendorsController {
   }
 
   @Post(':id/documents')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 uploads per minute
   @UseInterceptors(FileInterceptor('file'))
   async uploadDocument(
     @Param('id') id: string,
@@ -99,6 +101,7 @@ export class VendorsController {
   }
 
   @Post(':id/extract')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 extractions per minute
   async triggerExtraction(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserData,

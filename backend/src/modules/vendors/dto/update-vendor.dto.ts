@@ -1,10 +1,11 @@
-import { IsString, IsEnum, IsOptional, MinLength } from 'class-validator';
+import { IsString, IsEnum, IsOptional, MinLength, MaxLength } from 'class-validator';
 import { VendorType, VendorCriticality, VendorStatus } from '@prisma/client';
 
 export class UpdateVendorDto {
   @IsOptional()
   @IsString()
   @MinLength(2)
+  @MaxLength(255)
   name?: string;
 
   @IsOptional()

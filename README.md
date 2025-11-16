@@ -71,9 +71,9 @@ DATABASE_URL="postgresql://vendorflow:vendorflow_dev_password@localhost:5432/ven
 # Redis
 REDIS_URL="redis://localhost:6379"
 
-# JWT
-JWT_SECRET="your-super-secret-jwt-key-change-in-production"
-JWT_EXPIRES_IN="7d"
+# JWT (IMPORTANT: JWT_SECRET must be at least 32 characters long)
+JWT_SECRET="your-super-secret-jwt-key-change-in-production-min-32-chars"
+JWT_EXPIRES_IN="1h"
 
 # Gemini AI
 GEMINI_API_KEY="your-gemini-api-key"
@@ -87,6 +87,8 @@ PORT=3001
 # Frontend
 NEXT_PUBLIC_API_URL="http://localhost:3001"
 ```
+
+**Important**: The JWT_SECRET must be at least 32 characters long for security. The application will fail to start if this requirement is not met.
 
 4. **Start infrastructure (PostgreSQL + Redis)**
 
@@ -178,35 +180,42 @@ npm run prisma:studio
 - [x] Docker Compose setup
 - [x] Basic documentation
 
-### Phase 2: 🔄 Database Schema
-- [ ] Prisma schema with all entities
-- [ ] Database migrations
+### Phase 2: ✅ Database Schema (Complete)
+- [x] Prisma schema with all 6 entities (Tenant, User, Vendor, VendorDocument, VendorFacts, ExtractionJob)
+- [x] Database migrations with composite indexes for performance
+- [x] Multi-tenant data model with tenant scoping
 
-### Phase 3: 🔄 Authentication & CRUD
-- [ ] JWT authentication
-- [ ] Multi-tenant guard/middleware
-- [ ] Vendor CRUD endpoints
+### Phase 3: ✅ Authentication & CRUD (Complete)
+- [x] JWT authentication with Passport
+- [x] Multi-tenant guard/middleware with tenant isolation
+- [x] Vendor CRUD endpoints (create, read, update, delete)
+- [x] Security features: rate limiting, Helmet, bcrypt (12 rounds), password complexity validation
+- [x] Defense-in-depth: timing attack prevention, race condition handling, magic byte file validation
 
-### Phase 4: 🔄 AI Integration
-- [ ] Gemini File Search service
-- [ ] Document upload to Gemini
-- [ ] Background extraction jobs
-- [ ] Facts extraction with AI
-- [ ] Supporting snippets ("show sources")
+### Phase 4: ✅ AI Integration (Complete)
+- [x] Gemini AI service with File Search integration
+- [x] Document upload to Gemini FileSearchStore
+- [x] BullMQ background job queue for extraction
+- [x] Extraction processor/worker with progress tracking
+- [x] Facts extraction with structured output
+- [x] Supporting snippets endpoint ("show sources")
+- [x] Automatic extraction triggering on document upload
 
-### Phase 5: 🔄 Frontend UI
-- [ ] Authentication UI
-- [ ] Vendors list with filters
-- [ ] Vendor detail page
-- [ ] DORA compliance register
-- [ ] Document upload UI
-- [ ] Extraction trigger & status
+### Phase 5: ✅ Frontend UI (Complete)
+- [x] Authentication UI (login/register with validation)
+- [x] Vendors list with filters (type, criticality, search)
+- [x] Vendor detail page with document management
+- [x] DORA compliance register with CSV export
+- [x] Document upload UI with file type validation
+- [x] Extraction trigger & status display
+- [x] Show sources feature for extracted facts
+- [x] AuthProvider context for global auth state
 
-### Phase 6: 🔄 Testing & Polish
+### Phase 6: ⚠️ Testing & Polish (Partial)
 - [ ] Backend integration tests
 - [ ] Frontend component tests
-- [ ] Security audit
-- [ ] Production-ready documentation
+- [x] Security audit completed with all critical issues resolved
+- [x] Production-ready documentation
 
 ## Multi-Tenancy
 
@@ -233,21 +242,51 @@ VendorFlow AI is built with multi-tenancy at its core:
 
 ## API Endpoints
 
-Documentation for API endpoints will be generated as they are implemented.
+All endpoints are prefixed with the backend URL (default: `http://localhost:3001`).
 
-### Planned Endpoints
+### Authentication
 
-- `POST /api/auth/register-tenant` - Register new tenant
-- `POST /api/auth/login` - User login
-- `GET /api/vendors` - List vendors (with filters)
-- `POST /api/vendors` - Create vendor
-- `GET /api/vendors/:id` - Get vendor details
-- `PATCH /api/vendors/:id` - Update vendor
-- `DELETE /api/vendors/:id` - Delete vendor
-- `POST /api/vendors/:id/documents` - Upload document
-- `POST /api/vendors/:id/extract` - Trigger extraction
-- `POST /api/vendors/:id/sources` - Get supporting snippets
-- `GET /api/compliance/dora` - Get DORA register
+- `POST /auth/register-tenant` - Register new tenant and admin user
+  - Body: `{ tenantName, adminEmail, adminPassword }`
+  - Returns: `{ token, user, tenant }`
+
+- `POST /auth/login` - User login
+  - Body: `{ email, password }`
+  - Returns: `{ token, user, tenant }`
+
+### Vendors (All require authentication via `Authorization: Bearer <token>`)
+
+- `GET /vendors` - List all vendors for the tenant
+  - Query params: `type`, `criticality`, `search`
+  - Returns: Array of vendor summaries with hasFacts and documentCount
+
+- `POST /vendors` - Create a new vendor
+  - Body: `{ name, type, criticality }`
+  - Returns: Created vendor object
+
+- `GET /vendors/:id` - Get vendor details
+  - Returns: Vendor with documents, facts, and extraction jobs
+
+- `PATCH /vendors/:id` - Update vendor
+  - Body: Partial vendor fields
+  - Returns: Updated vendor object
+
+- `DELETE /vendors/:id` - Delete vendor
+  - Returns: Success message
+
+- `POST /vendors/:id/documents` - Upload document (multipart/form-data)
+  - Body: `file` (multipart), `fileType` (form field)
+  - Accepted types: PDF, DOCX, DOC, TXT, CSV, XLS, XLSX
+  - Max size: 10MB
+  - Returns: Created document object
+  - Note: Automatically triggers extraction job
+
+- `POST /vendors/:id/extract` - Manually trigger extraction
+  - Returns: Created extraction job object
+
+- `GET /vendors/:id/sources` - Get supporting snippets for a statement
+  - Query param: `statement` (required)
+  - Returns: Array of source snippets from documents
 
 ## Development Scripts
 
@@ -279,14 +318,153 @@ npm run lint               # Lint all code
 npm run format             # Format code with Prettier
 ```
 
-## Security Considerations
+## Security Features
 
+VendorFlow AI implements comprehensive security measures:
+
+### Authentication & Authorization
+- **JWT-based authentication** with 1-hour token expiry
+- **Bcrypt password hashing** with 12 rounds
+- **Password complexity validation** (min 8 chars, uppercase, lowercase, number/special char)
+- **JWT secret validation** (minimum 32 characters enforced at startup)
+
+### Multi-Tenant Security
+- **Defense-in-depth**: Tenant isolation enforced at database query level using compound WHERE clauses
+- **Tenant scoping**: All queries use `where: { id, tenantId }` to prevent cross-tenant access
+- **JWT tenant claims**: Tenant ID embedded in JWT and validated on every request
+
+### Attack Prevention
+- **Timing attack prevention**: Constant-time login (always runs bcrypt even for non-existent users)
+- **Race condition handling**: Registration uses database transactions with unique constraint error handling
+- **File upload security**: Magic byte validation prevents CVE-2024-29409 (file extension spoofing)
+- **Rate limiting**: Global (100 req/min) and endpoint-specific limits (3 registrations/min, 5 logins/min)
+
+### Data Protection
+- **Input validation**: Class-validator DTOs on all endpoints
+- **Environment validation**: Type-safe environment variables validated at startup
+- **CORS configuration**: Restricted to frontend origin
+- **Helmet middleware**: Security headers (XSS protection, HSTS, etc.)
+- **File size limits**: 10MB maximum for document uploads
+
+### Best Practices
 - All secrets in environment variables, never committed
-- JWT tokens for authentication
-- Multi-tenant data isolation enforced at query level
-- Input validation on all API endpoints
-- CORS configured for frontend origin
-- File upload validation (type, size)
+- Type-safe throughout (no `any` types in production code)
+- Proper error handling with type guards
+- SQL injection prevention via Prisma ORM
+
+## Production Deployment
+
+### Prerequisites for Production
+
+- Node.js 20+ LTS
+- PostgreSQL 14+ (managed service recommended)
+- Redis 7+ (managed service recommended)
+- Google Gemini API key with File Search access
+- SSL certificates for HTTPS
+- Domain name configured
+
+### Environment Configuration
+
+Create a production `.env` file with:
+
+```env
+# Database (use managed PostgreSQL service URL)
+DATABASE_URL="postgresql://user:password@prod-db-host:5432/vendorflow?schema=public&sslmode=require"
+
+# Redis (use managed Redis service URL)
+REDIS_URL="redis://user:password@prod-redis-host:6379"
+
+# JWT (generate a strong 64+ character random string)
+JWT_SECRET="<generate-a-strong-random-string-minimum-32-chars-recommended-64>"
+JWT_EXPIRES_IN="1h"
+
+# Gemini AI
+GEMINI_API_KEY="<your-production-gemini-api-key>"
+GEMINI_PROJECT_ID="<your-gcp-project-id>"
+GEMINI_LOCATION="us-central1"
+
+# Application
+NODE_ENV="production"
+PORT=3001
+
+# Frontend (use your production domain)
+NEXT_PUBLIC_API_URL="https://api.yourdomain.com"
+```
+
+### Build and Deploy
+
+1. **Install dependencies**:
+   ```bash
+   npm install --production
+   ```
+
+2. **Build both applications**:
+   ```bash
+   npm run build
+   ```
+
+3. **Run database migrations**:
+   ```bash
+   npm run migrate
+   ```
+
+4. **Start the applications**:
+
+   **Backend**:
+   ```bash
+   cd backend
+   npm run start:prod
+   ```
+
+   **Frontend** (using a process manager like PM2):
+   ```bash
+   cd frontend
+   pm2 start npm --name "vendorflow-frontend" -- start
+   ```
+
+### Recommended Deployment Architecture
+
+- **Reverse Proxy**: Nginx or Cloudflare for SSL termination and caching
+- **Backend**: Deploy on VPS/container with PM2 or Docker
+- **Frontend**: Deploy on Vercel, Netlify, or self-hosted Next.js server
+- **Database**: Managed PostgreSQL (AWS RDS, Google Cloud SQL, Supabase)
+- **Redis**: Managed Redis (AWS ElastiCache, Redis Cloud, Upstash)
+- **Queue Worker**: Run extraction worker as separate process with PM2
+
+### Queue Worker Deployment
+
+The extraction worker should run as a separate process:
+
+```bash
+cd backend
+pm2 start npm --name "vendorflow-worker" -- run worker:extraction
+```
+
+### Health Checks
+
+- Backend: `GET http://localhost:3001/` (returns 404 but confirms server running)
+- Database: Ensure migrations applied successfully
+- Redis: Worker should connect and process jobs
+
+### Security Checklist for Production
+
+- [ ] JWT_SECRET is 64+ characters and randomly generated
+- [ ] Database uses SSL connections (`sslmode=require`)
+- [ ] Redis uses password authentication
+- [ ] CORS restricted to production frontend domain only
+- [ ] Rate limiting enabled (default: 100 req/min)
+- [ ] Helmet middleware active with security headers
+- [ ] Environment variables never committed to git
+- [ ] File upload size limits enforced (10MB)
+- [ ] HTTPS enforced for all traffic
+- [ ] Regular security updates for dependencies
+
+### Monitoring Recommendations
+
+- **Application**: Use logging service (Sentry, LogRocket)
+- **Infrastructure**: Monitor CPU, memory, disk usage
+- **Database**: Monitor connection pool, query performance
+- **Queue**: Monitor job success/failure rates, queue length
 
 ## Contributing
 

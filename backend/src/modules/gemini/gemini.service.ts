@@ -135,7 +135,9 @@ export class GeminiService {
       this.logger.warn('Failed to parse JSON from Gemini response, using mock data');
       return this.getMockExtraction(vendorName);
     } catch (error) {
-      this.logger.error(`Extraction error: ${error.message}`, error.stack);
+      // Only log error message to avoid exposing sensitive data in stack traces
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Extraction error: ${errorMessage}`);
       return this.getMockExtraction(vendorName);
     }
   }

@@ -42,6 +42,7 @@ export class VendorsController {
   constructor(private vendorsService: VendorsService) {}
 
   @Get()
+  @Throttle({ default: { limit: 100, ttl: 60000 } }) // 100 requests per minute
   @ApiOperation({ summary: 'Get all vendors', description: 'Returns all vendors for the authenticated user\'s tenant with optional filtering' })
   @ApiQuery({ name: 'type', required: false, enum: VendorType, description: 'Filter by vendor type' })
   @ApiQuery({ name: 'criticality', required: false, enum: VendorCriticality, description: 'Filter by criticality level' })
@@ -49,6 +50,7 @@ export class VendorsController {
   @ApiQuery({ name: 'includeFacts', required: false, type: String, description: 'Include extracted facts (true/false)' })
   @ApiResponse({ status: 200, description: 'List of vendors' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async findAll(
     @CurrentUser() user: CurrentUserData,
     @Query('type') type?: VendorType,
@@ -65,30 +67,36 @@ export class VendorsController {
   }
 
   @Get(':id')
+  @Throttle({ default: { limit: 100, ttl: 60000 } }) // 100 requests per minute
   @ApiOperation({ summary: 'Get vendor by ID', description: 'Returns a single vendor with all related data' })
   @ApiParam({ name: 'id', type: String, description: 'Vendor UUID' })
   @ApiResponse({ status: 200, description: 'Vendor details' })
   @ApiResponse({ status: 404, description: 'Vendor not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async findOne(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
     return this.vendorsService.findOne(id, user.tenantId);
   }
 
   @Post()
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // 20 requests per minute
   @ApiOperation({ summary: 'Create vendor', description: 'Creates a new vendor for the authenticated user\'s tenant' })
   @ApiResponse({ status: 201, description: 'Vendor created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async create(@Body() dto: CreateVendorDto, @CurrentUser() user: CurrentUserData) {
     return this.vendorsService.create(user.tenantId, dto);
   }
 
   @Patch(':id')
+  @Throttle({ default: { limit: 50, ttl: 60000 } }) // 50 requests per minute
   @ApiOperation({ summary: 'Update vendor', description: 'Updates an existing vendor' })
   @ApiParam({ name: 'id', type: String, description: 'Vendor UUID' })
   @ApiResponse({ status: 200, description: 'Vendor updated successfully' })
   @ApiResponse({ status: 404, description: 'Vendor not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateVendorDto,
@@ -98,11 +106,13 @@ export class VendorsController {
   }
 
   @Delete(':id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 requests per minute (destructive operation)
   @ApiOperation({ summary: 'Delete vendor', description: 'Permanently deletes a vendor and all related data' })
   @ApiParam({ name: 'id', type: String, description: 'Vendor UUID' })
   @ApiResponse({ status: 200, description: 'Vendor deleted successfully' })
   @ApiResponse({ status: 404, description: 'Vendor not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async delete(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
     return this.vendorsService.delete(id, user.tenantId);
   }
@@ -160,11 +170,13 @@ export class VendorsController {
   }
 
   @Get(':id/sources')
+  @Throttle({ default: { limit: 30, ttl: 60000 } }) // 30 requests per minute
   @ApiOperation({ summary: 'Get supporting sources', description: 'Get document snippets that support a specific extracted fact' })
   @ApiParam({ name: 'id', type: String, description: 'Vendor UUID' })
   @ApiQuery({ name: 'statement', type: String, description: 'The fact/statement to find sources for' })
   @ApiResponse({ status: 200, description: 'Supporting sources retrieved' })
   @ApiResponse({ status: 404, description: 'Vendor not found' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async getSupportingSnippets(
     @Param('id') id: string,
     @Query('statement') statement: string,

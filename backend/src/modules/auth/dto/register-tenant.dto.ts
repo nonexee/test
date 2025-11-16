@@ -1,4 +1,5 @@
 import { IsEmail, IsString, MinLength, Matches } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class RegisterTenantDto {
@@ -7,6 +8,7 @@ export class RegisterTenantDto {
     example: 'Acme Corporation',
     minLength: 2,
   })
+  @Transform(({ value }) => value?.trim())
   @IsString()
   @MinLength(2)
   tenantName: string;
@@ -16,6 +18,7 @@ export class RegisterTenantDto {
     example: 'admin@acme.com',
     format: 'email',
   })
+  @Transform(({ value }) => value?.trim().toLowerCase())
   @IsEmail()
   adminEmail: string;
 

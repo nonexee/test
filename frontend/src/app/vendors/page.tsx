@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
@@ -28,18 +28,7 @@ export default function VendorsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/auth/login');
-      return;
-    }
-
-    if (user) {
-      fetchVendors();
-    }
-  }, [user, authLoading, typeFilter, criticalityFilter, searchQuery]);
-
-  const fetchVendors = async () => {
+  const fetchVendors = useCallback(async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -55,7 +44,18 @@ export default function VendorsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [typeFilter, criticalityFilter, searchQuery]);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/auth/login');
+      return;
+    }
+
+    if (user) {
+      fetchVendors();
+    }
+  }, [user, authLoading, fetchVendors, router]);
 
   if (authLoading || !user) {
     return (

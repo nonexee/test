@@ -110,7 +110,9 @@ export class ExtractionProcessor extends WorkerHost {
 
       this.logger.log(`Successfully completed extraction job ${extractionJobId}`);
     } catch (error) {
-      this.logger.error(`Extraction job ${extractionJobId} failed:`, error);
+      // Only log error message to avoid exposing sensitive data from error object
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Extraction job ${extractionJobId} failed: ${errorMessage}`);
 
       // Update extraction job status to ERROR
       await this.prisma.extractionJob.update({

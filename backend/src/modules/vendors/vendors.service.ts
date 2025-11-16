@@ -216,9 +216,10 @@ export class VendorsService {
     } catch (error) {
       // Log error but don't fail the upload
       // Document is saved successfully, extraction can be manually triggered
+      // Only log error message to avoid exposing sensitive data
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(
-        `Failed to auto-trigger extraction for vendor ${vendorId} after document upload`,
-        error,
+        `Failed to auto-trigger extraction for vendor ${vendorId} after document upload: ${errorMessage}`
       );
       // Don't throw - document upload succeeded
     }

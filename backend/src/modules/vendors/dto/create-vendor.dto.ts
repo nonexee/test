@@ -1,4 +1,5 @@
 import { IsString, IsEnum, MinLength, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 import { VendorType, VendorCriticality } from '@prisma/client';
 
@@ -9,6 +10,7 @@ export class CreateVendorDto {
     minLength: 2,
     maxLength: 255,
   })
+  @Transform(({ value }) => value?.trim())
   @IsString()
   @MinLength(2)
   @MaxLength(255)

@@ -94,4 +94,24 @@ export class VendorsController {
   ) {
     return this.vendorsService.uploadDocument(id, user.tenantId, user.userId, file, dto);
   }
+
+  @Post(':id/extract')
+  async triggerExtraction(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return this.vendorsService.triggerExtraction(id, user.tenantId);
+  }
+
+  @Get(':id/sources')
+  async getSupportingSnippets(
+    @Param('id') id: string,
+    @Query('statement') statement: string,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    if (!statement) {
+      throw new Error('statement query parameter is required');
+    }
+    return this.vendorsService.getSupportingSnippets(id, user.tenantId, statement);
+  }
 }

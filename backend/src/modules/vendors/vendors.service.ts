@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeminiService } from '../gemini/gemini.service';
+import { QueueService } from '../queue/queue.service';
 import { CreateVendorDto } from './dto/create-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
@@ -11,6 +12,7 @@ export class VendorsService {
   constructor(
     private prisma: PrismaService,
     private geminiService: GeminiService,
+    private queueService: QueueService,
   ) {}
 
   async findAll(
@@ -181,6 +183,57 @@ export class VendorsService {
       },
     });
 
+    // Automatically trigger extraction job when a new document is uploaded
+    await this.triggerExtraction(vendorId, tenantId);
+
     return document;
+  }
+
+  /**
+   * Manually trigger extraction for a vendor
+   */
+  async triggerExtraction(vendorId: string, tenantId: string) {
+    // Verify vendor exists and belongs to tenant
+    await this.findOne(vendorId, tenantId);
+
+    // Create extraction job record
+    const extractionJob = await this.prisma.extractionJob.create({
+      data: {
+        vendorId,
+        status: 'PENDING',
+      },
+    });
+
+    // Add job to queue
+    await this.queueService.addExtractionJob({
+      vendorId,
+      tenantId,
+      extractionJobId: extractionJob.id,
+    });
+
+    return extractionJob;
+  }
+
+  /**
+   * Get supporting snippets for a given statement/field
+   */
+  async getSupportingSnippets(vendorId: string, tenantId: string, statement: string) {
+    // Verify vendor exists and belongs to tenant
+    const vendor = await this.findOne(vendorId, tenantId);
+
+    // Get tenant's Gemini store name
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant not found');
+    }
+
+    // Get supporting snippets from Gemini File Search
+    return this.geminiService.getSupportingSnippets(
+      tenant.geminiFileSearchStoreName,
+      statement,
+    );
   }
 }

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { PrismaService } from '../prisma/prisma.service';
 
 export interface VendorFactsExtraction {
   data_categories: string[];
@@ -31,7 +32,10 @@ export class GeminiService {
   private readonly logger = new Logger(GeminiService.name);
   private genAI: GoogleGenerativeAI;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private prisma: PrismaService,
+  ) {
     const apiKey = this.configService.get<string>('gemini.apiKey');
     if (apiKey && apiKey !== 'your-gemini-api-key') {
       this.genAI = new GoogleGenerativeAI(apiKey);
@@ -74,6 +78,27 @@ export class GeminiService {
 
     this.logger.log(`File uploaded with ID: ${fileId}`);
     return fileId;
+  }
+
+  /**
+   * Extract vendor facts by vendor ID
+   * This is the main method used by the extraction processor
+   */
+  async extractVendorFacts(
+    vendorId: string,
+    storeName: string,
+  ): Promise<VendorFactsExtraction> {
+    // Get vendor name from database
+    const vendor = await this.prisma.vendor.findUnique({
+      where: { id: vendorId },
+      select: { name: true },
+    });
+
+    if (!vendor) {
+      throw new Error(`Vendor ${vendorId} not found`);
+    }
+
+    return this.runVendorExtraction(storeName, vendor.name);
   }
 
   /**

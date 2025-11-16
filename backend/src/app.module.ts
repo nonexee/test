@@ -13,6 +13,7 @@ import { validate } from './config/env.validation';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { VendorsModule } from './modules/vendors/vendors.module';
+import { QueueModule } from './modules/queue/queue.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { VendorsModule } from './modules/vendors/vendors.module';
     PrismaModule,
     AuthModule,
     VendorsModule,
+    QueueModule,
   ],
   controllers: [],
   providers: [

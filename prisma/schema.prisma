@@ -1,0 +1,201 @@
+// This is your Prisma schema file
+// VendorFlow AI - Multi-tenant SaaS for vendor compliance management
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserRole {
+  ADMIN
+  VIEWER
+}
+
+enum VendorType {
+  SAAS
+  CLOUD_INFRA
+  CONSULTING
+  AI_SERVICE
+  OTHER
+}
+
+enum VendorCriticality {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum VendorStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+}
+
+enum DocumentType {
+  CONTRACT
+  DPA
+  SOC2
+  SECURITY_WHITEPAPER
+  AI_DOC
+  OTHER
+}
+
+enum ImpactLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ExtractionJobStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  ERROR
+}
+
+// ============================================================================
+// MODELS
+// ============================================================================
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Gemini File Search store identifier for this tenant
+  geminiFileSearchStoreName String @unique
+
+  // Relations
+  users   User[]
+  vendors Vendor[]
+
+  @@index([name])
+  @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(VIEWER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Multi-tenancy
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Relations
+  uploadedDocuments VendorDocument[]
+
+  @@index([tenantId])
+  @@index([email])
+  @@map("users")
+}
+
+model Vendor {
+  id          String            @id @default(uuid())
+  name        String
+  type        VendorType
+  criticality VendorCriticality
+  status      VendorStatus      @default(DRAFT)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Multi-tenancy
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Relations
+  documents      VendorDocument[]
+  facts          VendorFacts?
+  extractionJobs ExtractionJob[]
+
+  @@index([tenantId])
+  @@index([name])
+  @@index([type])
+  @@index([criticality])
+  @@index([status])
+  @@map("vendors")
+}
+
+model VendorDocument {
+  id         String       @id @default(uuid())
+  fileName   String
+  fileType   DocumentType
+  uploadedAt DateTime     @default(now())
+
+  // Gemini File Search resource identifier
+  geminiFileNameOrId String
+
+  // Relations
+  vendorId String
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  uploadedByUserId String
+  uploadedBy       User   @relation(fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([vendorId])
+  @@index([uploadedByUserId])
+  @@map("vendor_documents")
+}
+
+model VendorFacts {
+  // One-to-one relationship with Vendor
+  vendorId String @id
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  // Extracted facts stored as JSON
+  dataCategories Json // string[]
+  regions        Json // string[]
+  subProcessors  Json // { name: string, region: string, role: string }[]
+
+  // Text fields
+  servicesSupported  String @db.Text
+  businessFunctions  String @db.Text
+  securityHighlights String @db.Text
+
+  // Impact assessment
+  impactIfCompromised ImpactLevel
+
+  // Regulatory compliance flags
+  regulatoryRelevance Json // { dora: boolean, nis2: boolean, ai_act: boolean }
+
+  // Extraction metadata
+  lastExtractionAt     DateTime?
+  extractionConfidence Float?
+
+  @@map("vendor_facts")
+}
+
+model ExtractionJob {
+  id         String              @id @default(uuid())
+  status     ExtractionJobStatus @default(PENDING)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  // LLM output for debugging/audit
+  rawLlmOutput Json?
+  errorMessage String? @db.Text
+
+  // Relations
+  vendorId String
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([vendorId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("extraction_jobs")
+}

@@ -1,0 +1,14 @@
+import { IsEmail, IsString, MinLength } from 'class-validator';
+
+export class RegisterTenantDto {
+  @IsString()
+  @MinLength(2)
+  tenantName: string;
+
+  @IsEmail()
+  adminEmail: string;
+
+  @IsString()
+  @MinLength(8)
+  adminPassword: string;
+}

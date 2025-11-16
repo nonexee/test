@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
+import * as cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -11,6 +12,9 @@ async function bootstrap() {
 
   // Security middleware - Helmet
   app.use(helmet());
+
+  // Cookie parser middleware (CRITICAL for httpOnly cookies - HIGH #12)
+  app.use(cookieParser());
 
   // Enable CORS with strict validation
   const frontendUrl = process.env.FRONTEND_URL;

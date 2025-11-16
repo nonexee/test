@@ -19,19 +19,19 @@ interface VendorDetail {
     uploadedAt: string;
   }>;
   facts: {
-    dataCategories: string[];
-    regions: string[];
-    subProcessors: Array<{ name: string; region: string; role: string }>;
-    servicesSupported: string;
-    businessFunctions: string;
-    securityHighlights: string;
-    impactIfCompromised: string;
-    regulatoryRelevance: {
-      dora: boolean;
-      nis2: boolean;
-      ai_act: boolean;
+    dataCategories?: string[];
+    regions?: string[];
+    subProcessors?: Array<{ name: string; region: string; role: string }>;
+    servicesSupported?: string;
+    businessFunctions?: string;
+    securityHighlights?: string;
+    impactIfCompromised?: string;
+    regulatoryRelevance?: {
+      dora?: boolean;
+      nis2?: boolean;
+      ai_act?: boolean;
     };
-    lastExtractionAt: string;
+    lastExtractionAt?: string;
   } | null;
   extractionJobs: Array<{
     id: string;
@@ -462,7 +462,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
             <div className="space-y-6">
               {/* Last Extracted */}
               <div className="text-sm text-gray-500 mb-4">
-                Last extracted: {formatDate(vendor.facts.lastExtractionAt)}
+                Last extracted: {vendor.facts.lastExtractionAt ? formatDate(vendor.facts.lastExtractionAt) : 'Not extracted yet'}
               </div>
 
               {/* Data Categories */}
@@ -476,11 +476,11 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     {showSourcesFor === 'data_categories' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                {vendor.facts.dataCategories.length === 0 ? (
+                {(vendor.facts.dataCategories ?? []).length === 0 ? (
                   <div className="text-sm text-gray-500 italic">No data categories identified in documents</div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {vendor.facts.dataCategories.map((category, idx) => (
+                    {(vendor.facts.dataCategories ?? []).map((category, idx) => (
                       <span
                         key={idx}
                         className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
@@ -506,11 +506,11 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     {showSourcesFor === 'regions' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                {vendor.facts.regions.length === 0 ? (
+                {(vendor.facts.regions ?? []).length === 0 ? (
                   <div className="text-sm text-gray-500 italic">No regions identified in documents</div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {vendor.facts.regions.map((region, idx) => (
+                    {(vendor.facts.regions ?? []).map((region, idx) => (
                       <span
                         key={idx}
                         className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm"
@@ -536,7 +536,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     {showSourcesFor === 'subProcessors' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                {vendor.facts.subProcessors.length === 0 ? (
+                {(vendor.facts.subProcessors ?? []).length === 0 ? (
                   <div className="text-sm text-gray-500">None identified</div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -555,7 +555,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {vendor.facts.subProcessors.map((sp, idx) => (
+                        {(vendor.facts.subProcessors ?? []).map((sp, idx) => (
                           <tr key={idx}>
                             <td className="px-4 py-2 text-sm text-gray-900">{sp.name}</td>
                             <td className="px-4 py-2 text-sm text-gray-500">{sp.region}</td>
@@ -582,7 +582,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     {showSourcesFor === 'servicesSupported' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                <div className="text-sm text-gray-700">{vendor.facts.servicesSupported}</div>
+                <div className="text-sm text-gray-700">{vendor.facts.servicesSupported ?? 'Not specified'}</div>
                 {showSourcesFor === 'servicesSupported' && (
                   <SourcesDisplay sources={sources} loading={loadingSources} />
                 )}
@@ -599,7 +599,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     {showSourcesFor === 'businessFunctions' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                <div className="text-sm text-gray-700">{vendor.facts.businessFunctions}</div>
+                <div className="text-sm text-gray-700">{vendor.facts.businessFunctions ?? 'Not specified'}</div>
                 {showSourcesFor === 'businessFunctions' && (
                   <SourcesDisplay sources={sources} loading={loadingSources} />
                 )}
@@ -616,7 +616,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     {showSourcesFor === 'securityHighlights' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                <div className="text-sm text-gray-700">{vendor.facts.securityHighlights}</div>
+                <div className="text-sm text-gray-700">{vendor.facts.securityHighlights ?? 'Not specified'}</div>
                 {showSourcesFor === 'securityHighlights' && (
                   <SourcesDisplay sources={sources} loading={loadingSources} />
                 )}
@@ -633,7 +633,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     {showSourcesFor === 'impactIfCompromised' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                <div className="text-sm text-gray-700">{vendor.facts.impactIfCompromised}</div>
+                <div className="text-sm text-gray-700">{vendor.facts.impactIfCompromised ?? 'Not specified'}</div>
                 {showSourcesFor === 'impactIfCompromised' && (
                   <SourcesDisplay sources={sources} loading={loadingSources} />
                 )}
@@ -655,36 +655,36 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     <span className="text-sm font-medium">DORA:</span>
                     <span
                       className={`px-2 py-1 text-xs rounded ${
-                        vendor.facts.regulatoryRelevance.dora
+                        vendor.facts.regulatoryRelevance?.dora
                           ? 'bg-green-100 text-green-800'
                           : 'bg-gray-100 text-gray-600'
                       }`}
                     >
-                      {vendor.facts.regulatoryRelevance.dora ? 'Yes' : 'No'}
+                      {vendor.facts.regulatoryRelevance?.dora ? 'Yes' : 'No'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">NIS2:</span>
                     <span
                       className={`px-2 py-1 text-xs rounded ${
-                        vendor.facts.regulatoryRelevance.nis2
+                        vendor.facts.regulatoryRelevance?.nis2
                           ? 'bg-green-100 text-green-800'
                           : 'bg-gray-100 text-gray-600'
                       }`}
                     >
-                      {vendor.facts.regulatoryRelevance.nis2 ? 'Yes' : 'No'}
+                      {vendor.facts.regulatoryRelevance?.nis2 ? 'Yes' : 'No'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">AI Act:</span>
                     <span
                       className={`px-2 py-1 text-xs rounded ${
-                        vendor.facts.regulatoryRelevance.ai_act
+                        vendor.facts.regulatoryRelevance?.ai_act
                           ? 'bg-green-100 text-green-800'
                           : 'bg-gray-100 text-gray-600'
                       }`}
                     >
-                      {vendor.facts.regulatoryRelevance.ai_act ? 'Yes' : 'No'}
+                      {vendor.facts.regulatoryRelevance?.ai_act ? 'Yes' : 'No'}
                     </span>
                   </div>
                 </div>

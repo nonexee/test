@@ -14,19 +14,19 @@ interface DoraVendor {
   status: string;
   hasFacts: boolean;
   facts?: {
-    dataCategories: string[];
-    regions: string[];
-    subProcessors: Array<{ name: string; region: string; role: string }>;
-    servicesSupported: string;
-    businessFunctions: string;
-    securityHighlights: string;
-    impactIfCompromised: string;
-    regulatoryRelevance: {
-      dora: boolean;
-      nis2: boolean;
-      ai_act: boolean;
+    dataCategories?: string[];
+    regions?: string[];
+    subProcessors?: Array<{ name: string; region: string; role: string }>;
+    servicesSupported?: string;
+    businessFunctions?: string;
+    securityHighlights?: string;
+    impactIfCompromised?: string;
+    regulatoryRelevance?: {
+      dora?: boolean;
+      nis2?: boolean;
+      ai_act?: boolean;
     };
-    lastExtractionAt: string;
+    lastExtractionAt?: string;
   };
 }
 
@@ -98,17 +98,17 @@ export default function DoraRegisterPage() {
       vendor.type.replace(/_/g, ' '),
       vendor.criticality,
       vendor.status,
-      vendor.facts.businessFunctions,
-      vendor.facts.servicesSupported,
-      vendor.facts.dataCategories.join('; '),
-      vendor.facts.regions.join('; '),
-      vendor.facts.subProcessors.map((sp) => `${sp.name} (${sp.region})`).join('; '),
-      vendor.facts.securityHighlights,
-      vendor.facts.impactIfCompromised,
-      vendor.facts.regulatoryRelevance.dora ? 'Yes' : 'No',
-      vendor.facts.regulatoryRelevance.nis2 ? 'Yes' : 'No',
-      vendor.facts.regulatoryRelevance.ai_act ? 'Yes' : 'No',
-      new Date(vendor.facts.lastExtractionAt).toLocaleDateString(),
+      vendor.facts?.businessFunctions ?? '',
+      vendor.facts?.servicesSupported ?? '',
+      (vendor.facts?.dataCategories ?? []).join('; '),
+      (vendor.facts?.regions ?? []).join('; '),
+      (vendor.facts?.subProcessors ?? []).map((sp) => `${sp.name} (${sp.region})`).join('; '),
+      vendor.facts?.securityHighlights ?? '',
+      vendor.facts?.impactIfCompromised ?? '',
+      vendor.facts?.regulatoryRelevance?.dora ? 'Yes' : 'No',
+      vendor.facts?.regulatoryRelevance?.nis2 ? 'Yes' : 'No',
+      vendor.facts?.regulatoryRelevance?.ai_act ? 'Yes' : 'No',
+      vendor.facts?.lastExtractionAt ? new Date(vendor.facts.lastExtractionAt).toLocaleDateString() : '',
     ]);
 
     // Escape CSV values and prevent formula injection (XSS mitigation)
@@ -255,11 +255,11 @@ export default function DoraRegisterPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-2">Business Functions</h4>
-                      <p className="text-sm text-gray-900">{vendor.facts.businessFunctions}</p>
+                      <p className="text-sm text-gray-900">{vendor.facts?.businessFunctions ?? 'Not specified'}</p>
                     </div>
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-2">Services Supported</h4>
-                      <p className="text-sm text-gray-900">{vendor.facts.servicesSupported}</p>
+                      <p className="text-sm text-gray-900">{vendor.facts?.servicesSupported ?? 'Not specified'}</p>
                     </div>
                   </div>
 
@@ -267,7 +267,7 @@ export default function DoraRegisterPage() {
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-2">Data Categories</h4>
                       <div className="flex flex-wrap gap-1">
-                        {vendor.facts.dataCategories.map((category, idx) => (
+                        {(vendor.facts?.dataCategories ?? []).map((category, idx) => (
                           <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
                             {category}
                           </span>
@@ -277,7 +277,7 @@ export default function DoraRegisterPage() {
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-2">Regions</h4>
                       <div className="flex flex-wrap gap-1">
-                        {vendor.facts.regions.map((region, idx) => (
+                        {(vendor.facts?.regions ?? []).map((region, idx) => (
                           <span key={idx} className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">
                             {region}
                           </span>
@@ -286,12 +286,12 @@ export default function DoraRegisterPage() {
                     </div>
                   </div>
 
-                  {vendor.facts.subProcessors.length > 0 && (
+                  {(vendor.facts?.subProcessors ?? []).length > 0 && (
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-2">Sub-processors</h4>
                       <div className="bg-gray-50 rounded p-3">
                         <div className="space-y-1">
-                          {vendor.facts.subProcessors.map((sp, idx) => (
+                          {(vendor.facts?.subProcessors ?? []).map((sp, idx) => (
                             <div key={idx} className="text-sm text-gray-900">
                               <strong>{sp.name}</strong> ({sp.region}) - {sp.role}
                             </div>
@@ -303,7 +303,7 @@ export default function DoraRegisterPage() {
 
                   <div>
                     <h4 className="text-sm font-semibold text-gray-700 mb-2">Security Highlights</h4>
-                    <p className="text-sm text-gray-900">{vendor.facts.securityHighlights}</p>
+                    <p className="text-sm text-gray-900">{vendor.facts?.securityHighlights ?? 'Not specified'}</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
@@ -311,30 +311,30 @@ export default function DoraRegisterPage() {
                       <h4 className="text-sm font-semibold text-gray-700 mb-1">Impact if Compromised</h4>
                       <span
                         className={`px-2 py-1 text-xs font-semibold rounded ${
-                          vendor.facts.impactIfCompromised === 'HIGH'
+                          vendor.facts?.impactIfCompromised === 'HIGH'
                             ? 'bg-red-100 text-red-800'
-                            : vendor.facts.impactIfCompromised === 'MEDIUM'
+                            : vendor.facts?.impactIfCompromised === 'MEDIUM'
                             ? 'bg-yellow-100 text-yellow-800'
                             : 'bg-green-100 text-green-800'
                         }`}
                       >
-                        {vendor.facts.impactIfCompromised}
+                        {vendor.facts?.impactIfCompromised ?? 'Not specified'}
                       </span>
                     </div>
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-1">Regulatory Relevance</h4>
                       <div className="flex gap-2">
-                        {vendor.facts.regulatoryRelevance.dora && (
+                        {vendor.facts?.regulatoryRelevance?.dora && (
                           <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-semibold">
                             DORA
                           </span>
                         )}
-                        {vendor.facts.regulatoryRelevance.nis2 && (
+                        {vendor.facts?.regulatoryRelevance?.nis2 && (
                           <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded font-semibold">
                             NIS2
                           </span>
                         )}
-                        {vendor.facts.regulatoryRelevance.ai_act && (
+                        {vendor.facts?.regulatoryRelevance?.ai_act && (
                           <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded font-semibold">
                             AI Act
                           </span>
@@ -344,7 +344,7 @@ export default function DoraRegisterPage() {
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-1">Last Extracted</h4>
                       <p className="text-sm text-gray-600">
-                        {new Date(vendor.facts.lastExtractionAt).toLocaleDateString()}
+                        {vendor.facts?.lastExtractionAt ? new Date(vendor.facts.lastExtractionAt).toLocaleDateString() : 'Not extracted'}
                       </p>
                     </div>
                   </div>

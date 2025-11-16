@@ -12,6 +12,7 @@ import {
   UploadedFile,
   ParseFilePipe,
   MaxFileSizeValidator,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { VendorsService } from './vendors.service';
@@ -109,8 +110,8 @@ export class VendorsController {
     @Query('statement') statement: string,
     @CurrentUser() user: CurrentUserData,
   ) {
-    if (!statement) {
-      throw new Error('statement query parameter is required');
+    if (!statement || statement.trim() === '') {
+      throw new BadRequestException('statement query parameter is required and cannot be empty');
     }
     return this.vendorsService.getSupportingSnippets(id, user.tenantId, statement);
   }

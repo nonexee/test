@@ -19,25 +19,25 @@ interface VendorDetail {
     uploadedAt: string;
   }>;
   facts: {
-    data_categories: string[];
+    dataCategories: string[];
     regions: string[];
-    sub_processors: Array<{ name: string; region: string; role: string }>;
-    services_supported: string;
-    business_functions: string;
-    security_highlights: string;
-    impact_if_compromised: string;
-    regulatory_relevance: {
+    subProcessors: Array<{ name: string; region: string; role: string }>;
+    servicesSupported: string;
+    businessFunctions: string;
+    securityHighlights: string;
+    impactIfCompromised: string;
+    regulatoryRelevance: {
       dora: boolean;
       nis2: boolean;
       ai_act: boolean;
     };
-    lastExtractedAt: string;
+    lastExtractionAt: string;
   } | null;
   extractionJobs: Array<{
     id: string;
     status: string;
     createdAt: string;
-    completedAt: string | null;
+    finishedAt: string | null;
   }>;
 }
 
@@ -209,12 +209,12 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'ACTIVE':
+      case 'APPROVED':
         return 'bg-green-100 text-green-800';
-      case 'INACTIVE':
-        return 'bg-gray-100 text-gray-800';
-      case 'PENDING':
+      case 'IN_REVIEW':
         return 'bg-yellow-100 text-yellow-800';
+      case 'DRAFT':
+        return 'bg-gray-100 text-gray-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -222,11 +222,11 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
 
   const getJobStatusColor = (status: string) => {
     switch (status) {
-      case 'COMPLETED':
+      case 'SUCCESS':
         return 'bg-green-100 text-green-800';
-      case 'FAILED':
+      case 'ERROR':
         return 'bg-red-100 text-red-800';
-      case 'PROCESSING':
+      case 'RUNNING':
         return 'bg-blue-100 text-blue-800';
       case 'PENDING':
         return 'bg-yellow-100 text-yellow-800';
@@ -443,7 +443,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {vendor.facts.data_categories.map((category, idx) => (
+                  {vendor.facts.dataCategories.map((category, idx) => (
                     <span
                       key={idx}
                       className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
@@ -488,13 +488,13 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-medium text-gray-900">Sub-processors</div>
                   <button
-                    onClick={() => handleShowSources('sub_processors')}
+                    onClick={() => handleShowSources('subProcessors')}
                     className="text-xs text-blue-600 hover:text-blue-800"
                   >
-                    {showSourcesFor === 'sub_processors' ? 'Hide Sources' : 'Show Sources'}
+                    {showSourcesFor === 'subProcessors' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                {vendor.facts.sub_processors.length === 0 ? (
+                {vendor.facts.subProcessors.length === 0 ? (
                   <div className="text-sm text-gray-500">None identified</div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -513,7 +513,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {vendor.facts.sub_processors.map((sp, idx) => (
+                        {vendor.facts.subProcessors.map((sp, idx) => (
                           <tr key={idx}>
                             <td className="px-4 py-2 text-sm text-gray-900">{sp.name}</td>
                             <td className="px-4 py-2 text-sm text-gray-500">{sp.region}</td>
@@ -524,7 +524,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     </table>
                   </div>
                 )}
-                {showSourcesFor === 'sub_processors' && (
+                {showSourcesFor === 'subProcessors' && (
                   <SourcesDisplay sources={sources} loading={loadingSources} />
                 )}
               </div>
@@ -534,14 +534,14 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-medium text-gray-900">Services Supported</div>
                   <button
-                    onClick={() => handleShowSources('services_supported')}
+                    onClick={() => handleShowSources('servicesSupported')}
                     className="text-xs text-blue-600 hover:text-blue-800"
                   >
-                    {showSourcesFor === 'services_supported' ? 'Hide Sources' : 'Show Sources'}
+                    {showSourcesFor === 'servicesSupported' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                <div className="text-sm text-gray-700">{vendor.facts.services_supported}</div>
-                {showSourcesFor === 'services_supported' && (
+                <div className="text-sm text-gray-700">{vendor.facts.servicesSupported}</div>
+                {showSourcesFor === 'servicesSupported' && (
                   <SourcesDisplay sources={sources} loading={loadingSources} />
                 )}
               </div>
@@ -551,14 +551,14 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-medium text-gray-900">Business Functions</div>
                   <button
-                    onClick={() => handleShowSources('business_functions')}
+                    onClick={() => handleShowSources('businessFunctions')}
                     className="text-xs text-blue-600 hover:text-blue-800"
                   >
-                    {showSourcesFor === 'business_functions' ? 'Hide Sources' : 'Show Sources'}
+                    {showSourcesFor === 'businessFunctions' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                <div className="text-sm text-gray-700">{vendor.facts.business_functions}</div>
-                {showSourcesFor === 'business_functions' && (
+                <div className="text-sm text-gray-700">{vendor.facts.businessFunctions}</div>
+                {showSourcesFor === 'businessFunctions' && (
                   <SourcesDisplay sources={sources} loading={loadingSources} />
                 )}
               </div>
@@ -568,14 +568,14 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-medium text-gray-900">Security Highlights</div>
                   <button
-                    onClick={() => handleShowSources('security_highlights')}
+                    onClick={() => handleShowSources('securityHighlights')}
                     className="text-xs text-blue-600 hover:text-blue-800"
                   >
-                    {showSourcesFor === 'security_highlights' ? 'Hide Sources' : 'Show Sources'}
+                    {showSourcesFor === 'securityHighlights' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                <div className="text-sm text-gray-700">{vendor.facts.security_highlights}</div>
-                {showSourcesFor === 'security_highlights' && (
+                <div className="text-sm text-gray-700">{vendor.facts.securityHighlights}</div>
+                {showSourcesFor === 'securityHighlights' && (
                   <SourcesDisplay sources={sources} loading={loadingSources} />
                 )}
               </div>
@@ -585,14 +585,14 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-medium text-gray-900">Impact if Compromised</div>
                   <button
-                    onClick={() => handleShowSources('impact_if_compromised')}
+                    onClick={() => handleShowSources('impactIfCompromised')}
                     className="text-xs text-blue-600 hover:text-blue-800"
                   >
-                    {showSourcesFor === 'impact_if_compromised' ? 'Hide Sources' : 'Show Sources'}
+                    {showSourcesFor === 'impactIfCompromised' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                <div className="text-sm text-gray-700">{vendor.facts.impact_if_compromised}</div>
-                {showSourcesFor === 'impact_if_compromised' && (
+                <div className="text-sm text-gray-700">{vendor.facts.impactIfCompromised}</div>
+                {showSourcesFor === 'impactIfCompromised' && (
                   <SourcesDisplay sources={sources} loading={loadingSources} />
                 )}
               </div>
@@ -602,10 +602,10 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-medium text-gray-900">Regulatory Relevance</div>
                   <button
-                    onClick={() => handleShowSources('regulatory_relevance')}
+                    onClick={() => handleShowSources('regulatoryRelevance')}
                     className="text-xs text-blue-600 hover:text-blue-800"
                   >
-                    {showSourcesFor === 'regulatory_relevance' ? 'Hide Sources' : 'Show Sources'}
+                    {showSourcesFor === 'regulatoryRelevance' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
                 <div className="flex gap-4">
@@ -613,40 +613,40 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     <span className="text-sm font-medium">DORA:</span>
                     <span
                       className={`px-2 py-1 text-xs rounded ${
-                        vendor.facts.regulatory_relevance.dora
+                        vendor.facts.regulatoryRelevance.dora
                           ? 'bg-green-100 text-green-800'
                           : 'bg-gray-100 text-gray-600'
                       }`}
                     >
-                      {vendor.facts.regulatory_relevance.dora ? 'Yes' : 'No'}
+                      {vendor.facts.regulatoryRelevance.dora ? 'Yes' : 'No'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">NIS2:</span>
                     <span
                       className={`px-2 py-1 text-xs rounded ${
-                        vendor.facts.regulatory_relevance.nis2
+                        vendor.facts.regulatoryRelevance.nis2
                           ? 'bg-green-100 text-green-800'
                           : 'bg-gray-100 text-gray-600'
                       }`}
                     >
-                      {vendor.facts.regulatory_relevance.nis2 ? 'Yes' : 'No'}
+                      {vendor.facts.regulatoryRelevance.nis2 ? 'Yes' : 'No'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">AI Act:</span>
                     <span
                       className={`px-2 py-1 text-xs rounded ${
-                        vendor.facts.regulatory_relevance.ai_act
+                        vendor.facts.regulatoryRelevance.ai_act
                           ? 'bg-green-100 text-green-800'
                           : 'bg-gray-100 text-gray-600'
                       }`}
                     >
-                      {vendor.facts.regulatory_relevance.ai_act ? 'Yes' : 'No'}
+                      {vendor.facts.regulatoryRelevance.ai_act ? 'Yes' : 'No'}
                     </span>
                   </div>
                 </div>
-                {showSourcesFor === 'regulatory_relevance' && (
+                {showSourcesFor === 'regulatoryRelevance' && (
                   <SourcesDisplay sources={sources} loading={loadingSources} />
                 )}
               </div>
@@ -700,7 +700,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-500">
-                          {job.completedAt ? formatDate(job.completedAt) : '-'}
+                          {job.finishedAt ? formatDate(job.finishedAt) : '-'}
                         </div>
                       </td>
                     </tr>

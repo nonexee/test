@@ -13,14 +13,14 @@ interface DoraVendor {
   criticality: string;
   status: string;
   facts: {
-    data_categories: string[];
+    dataCategories: string[];
     regions: string[];
-    sub_processors: Array<{ name: string; region: string; role: string }>;
-    services_supported: string;
-    business_functions: string;
-    security_highlights: string;
-    impact_if_compromised: string;
-    regulatory_relevance: {
+    subProcessors: Array<{ name: string; region: string; role: string }>;
+    servicesSupported: string;
+    businessFunctions: string;
+    securityHighlights: string;
+    impactIfCompromised: string;
+    regulatoryRelevance: {
       dora: boolean;
       nis2: boolean;
       ai_act: boolean;
@@ -56,7 +56,7 @@ export default function DoraRegisterPage() {
 
       // Filter to only DORA-relevant vendors with facts
       const doraVendors = allVendors
-        .filter((v: DoraVendor) => v.facts?.regulatory_relevance?.dora === true)
+        .filter((v: DoraVendor) => v.facts?.regulatoryRelevance?.dora === true)
         .sort((a: DoraVendor, b: DoraVendor) => {
           // Sort by criticality: CRITICAL > HIGH > MEDIUM > LOW
           const criticalityOrder: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
@@ -97,21 +97,26 @@ export default function DoraRegisterPage() {
       vendor.type.replace(/_/g, ' '),
       vendor.criticality,
       vendor.status,
-      vendor.facts.business_functions,
-      vendor.facts.services_supported,
-      vendor.facts.data_categories.join('; '),
+      vendor.facts.businessFunctions,
+      vendor.facts.servicesSupported,
+      vendor.facts.dataCategories.join('; '),
       vendor.facts.regions.join('; '),
-      vendor.facts.sub_processors.map((sp) => `${sp.name} (${sp.region})`).join('; '),
-      vendor.facts.security_highlights,
-      vendor.facts.impact_if_compromised,
-      vendor.facts.regulatory_relevance.dora ? 'Yes' : 'No',
-      vendor.facts.regulatory_relevance.nis2 ? 'Yes' : 'No',
-      vendor.facts.regulatory_relevance.ai_act ? 'Yes' : 'No',
+      vendor.facts.subProcessors.map((sp) => `${sp.name} (${sp.region})`).join('; '),
+      vendor.facts.securityHighlights,
+      vendor.facts.impactIfCompromised,
+      vendor.facts.regulatoryRelevance.dora ? 'Yes' : 'No',
+      vendor.facts.regulatoryRelevance.nis2 ? 'Yes' : 'No',
+      vendor.facts.regulatoryRelevance.ai_act ? 'Yes' : 'No',
       new Date(vendor.facts.lastExtractedAt).toLocaleDateString(),
     ]);
 
-    // Escape CSV values
+    // Escape CSV values and prevent formula injection (XSS mitigation)
     const escapeCSV = (value: string) => {
+      // Prevent formula injection by prepending apostrophe to values starting with =, +, -, @
+      if (value.match(/^[=+\-@]/)) {
+        value = "'" + value;
+      }
+      // Escape quotes and wrap in quotes if contains special chars
       if (value.includes(',') || value.includes('"') || value.includes('\n')) {
         return `"${value.replace(/"/g, '""')}"`;
       }
@@ -251,11 +256,11 @@ export default function DoraRegisterPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-2">Business Functions</h4>
-                      <p className="text-sm text-gray-900">{vendor.facts.business_functions}</p>
+                      <p className="text-sm text-gray-900">{vendor.facts.businessFunctions}</p>
                     </div>
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-2">Services Supported</h4>
-                      <p className="text-sm text-gray-900">{vendor.facts.services_supported}</p>
+                      <p className="text-sm text-gray-900">{vendor.facts.servicesSupported}</p>
                     </div>
                   </div>
 
@@ -263,7 +268,7 @@ export default function DoraRegisterPage() {
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-2">Data Categories</h4>
                       <div className="flex flex-wrap gap-1">
-                        {vendor.facts.data_categories.map((category, idx) => (
+                        {vendor.facts.dataCategories.map((category, idx) => (
                           <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
                             {category}
                           </span>
@@ -282,12 +287,12 @@ export default function DoraRegisterPage() {
                     </div>
                   </div>
 
-                  {vendor.facts.sub_processors.length > 0 && (
+                  {vendor.facts.subProcessors.length > 0 && (
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-2">Sub-processors</h4>
                       <div className="bg-gray-50 rounded p-3">
                         <div className="space-y-1">
-                          {vendor.facts.sub_processors.map((sp, idx) => (
+                          {vendor.facts.subProcessors.map((sp, idx) => (
                             <div key={idx} className="text-sm text-gray-900">
                               <strong>{sp.name}</strong> ({sp.region}) - {sp.role}
                             </div>
@@ -299,7 +304,7 @@ export default function DoraRegisterPage() {
 
                   <div>
                     <h4 className="text-sm font-semibold text-gray-700 mb-2">Security Highlights</h4>
-                    <p className="text-sm text-gray-900">{vendor.facts.security_highlights}</p>
+                    <p className="text-sm text-gray-900">{vendor.facts.securityHighlights}</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
@@ -307,30 +312,30 @@ export default function DoraRegisterPage() {
                       <h4 className="text-sm font-semibold text-gray-700 mb-1">Impact if Compromised</h4>
                       <span
                         className={`px-2 py-1 text-xs font-semibold rounded ${
-                          vendor.facts.impact_if_compromised === 'high'
+                          vendor.facts.impactIfCompromised === 'HIGH'
                             ? 'bg-red-100 text-red-800'
-                            : vendor.facts.impact_if_compromised === 'medium'
+                            : vendor.facts.impactIfCompromised === 'MEDIUM'
                             ? 'bg-yellow-100 text-yellow-800'
                             : 'bg-green-100 text-green-800'
                         }`}
                       >
-                        {vendor.facts.impact_if_compromised.toUpperCase()}
+                        {vendor.facts.impactIfCompromised}
                       </span>
                     </div>
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-1">Regulatory Relevance</h4>
                       <div className="flex gap-2">
-                        {vendor.facts.regulatory_relevance.dora && (
+                        {vendor.facts.regulatoryRelevance.dora && (
                           <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-semibold">
                             DORA
                           </span>
                         )}
-                        {vendor.facts.regulatory_relevance.nis2 && (
+                        {vendor.facts.regulatoryRelevance.nis2 && (
                           <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded font-semibold">
                             NIS2
                           </span>
                         )}
-                        {vendor.facts.regulatory_relevance.ai_act && (
+                        {vendor.facts.regulatoryRelevance.ai_act && (
                           <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded font-semibold">
                             AI Act
                           </span>

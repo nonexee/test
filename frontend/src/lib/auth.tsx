@@ -31,12 +31,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Load user from localStorage on mount
-    const storedUser = localStorage.getItem('user');
-    const storedTenant = localStorage.getItem('tenant');
-    if (storedUser && storedTenant) {
-      setUser(JSON.parse(storedUser));
-      setTenant(JSON.parse(storedTenant));
+    // Load user from localStorage on mount (client-side only)
+    if (typeof window !== 'undefined') {
+      try {
+        const storedUser = localStorage.getItem('user');
+        const storedTenant = localStorage.getItem('tenant');
+        if (storedUser && storedTenant) {
+          setUser(JSON.parse(storedUser));
+          setTenant(JSON.parse(storedTenant));
+        }
+      } catch (error) {
+        console.error('Failed to load user from localStorage:', error);
+        // Clear potentially corrupted data
+        localStorage.removeItem('user');
+        localStorage.removeItem('tenant');
+        localStorage.removeItem('token');
+      }
     }
     setLoading(false);
   }, []);
@@ -45,9 +55,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const response = await apiClient.post('/auth/login', { email, password });
     const { token, user: userData, tenant: tenantData } = response.data;
 
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
-    localStorage.setItem('tenant', JSON.stringify(tenantData));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('tenant', JSON.stringify(tenantData));
+    }
 
     setUser(userData);
     setTenant(tenantData);
@@ -61,18 +73,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     const { token, user: userData, tenant: tenantData } = response.data;
 
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
-    localStorage.setItem('tenant', JSON.stringify(tenantData));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('tenant', JSON.stringify(tenantData));
+    }
 
     setUser(userData);
     setTenant(tenantData);
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('tenant');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('tenant');
+    }
     setUser(null);
     setTenant(null);
   };

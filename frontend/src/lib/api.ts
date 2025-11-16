@@ -28,10 +28,11 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear token and redirect to login on unauthorized
+      // Clear token, user, and tenant, then redirect to login on unauthorized
       if (typeof window !== 'undefined') {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        localStorage.removeItem('tenant');
         window.location.href = '/auth/login';
       }
     }

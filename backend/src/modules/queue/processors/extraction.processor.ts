@@ -1,6 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import { ExtractionJobStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GeminiService } from '../../gemini/gemini.service';
 import { ExtractionJobData } from '../queue.service';
@@ -22,11 +23,11 @@ export class ExtractionProcessor extends WorkerHost {
     this.logger.log(`Starting extraction job ${extractionJobId} for vendor ${vendorId}`);
 
     try {
-      // Update job status to PROCESSING
+      // Update job status to RUNNING
       await this.prisma.extractionJob.update({
         where: { id: extractionJobId },
         data: {
-          status: 'PROCESSING',
+          status: ExtractionJobStatus.RUNNING,
           startedAt: new Date(),
         },
       });
@@ -59,29 +60,37 @@ export class ExtractionProcessor extends WorkerHost {
 
       await job.updateProgress(80);
 
-      // Save extracted facts to database
+      // Save extracted facts to database (map snake_case to camelCase)
+      const factsData = {
+        dataCategories: extractedFacts.data_categories,
+        regions: extractedFacts.regions,
+        subProcessors: extractedFacts.sub_processors,
+        servicesSupported: extractedFacts.services_supported,
+        businessFunctions: extractedFacts.business_functions,
+        securityHighlights: extractedFacts.security_highlights,
+        impactIfCompromised: extractedFacts.impact_if_compromised.toUpperCase(),
+        regulatoryRelevance: extractedFacts.regulatory_relevance,
+        lastExtractionAt: new Date(),
+      };
+
       await this.prisma.vendorFacts.upsert({
         where: { vendorId: vendor.id },
-        update: {
-          ...extractedFacts,
-          lastExtractedAt: new Date(),
-        },
+        update: factsData,
         create: {
-          ...extractedFacts,
+          ...factsData,
           vendorId: vendor.id,
-          lastExtractedAt: new Date(),
         },
       });
 
       await job.updateProgress(90);
 
-      // Update extraction job status to COMPLETED
+      // Update extraction job status to SUCCESS
       await this.prisma.extractionJob.update({
         where: { id: extractionJobId },
         data: {
-          status: 'COMPLETED',
-          completedAt: new Date(),
-          result: extractedFacts as Record<string, unknown>,
+          status: ExtractionJobStatus.SUCCESS,
+          finishedAt: new Date(),
+          rawLlmOutput: JSON.parse(JSON.stringify(extractedFacts)),
         },
       });
 
@@ -91,12 +100,12 @@ export class ExtractionProcessor extends WorkerHost {
     } catch (error) {
       this.logger.error(`Extraction job ${extractionJobId} failed:`, error);
 
-      // Update extraction job status to FAILED
+      // Update extraction job status to ERROR
       await this.prisma.extractionJob.update({
         where: { id: extractionJobId },
         data: {
-          status: 'FAILED',
-          completedAt: new Date(),
+          status: ExtractionJobStatus.ERROR,
+          finishedAt: new Date(),
           errorMessage:
             error instanceof Error ? error.message : 'Unknown error occurred',
         },

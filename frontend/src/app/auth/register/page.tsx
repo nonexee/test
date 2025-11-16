@@ -16,18 +16,17 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
 
   const validatePassword = (password: string): string | null => {
+    // Match backend regex pattern exactly: /((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/
+    const passwordRegex = /((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/;
+
     if (password.length < 8) {
       return 'Password must be at least 8 characters long';
     }
-    if (!/[A-Z]/.test(password)) {
-      return 'Password must contain at least one uppercase letter';
+
+    if (!passwordRegex.test(password)) {
+      return 'Password must contain at least 1 uppercase letter, 1 lowercase letter, and 1 number or special character';
     }
-    if (!/[a-z]/.test(password)) {
-      return 'Password must contain at least one lowercase letter';
-    }
-    if (!/[\d\W]/.test(password)) {
-      return 'Password must contain at least one number or special character';
-    }
+
     return null;
   };
 

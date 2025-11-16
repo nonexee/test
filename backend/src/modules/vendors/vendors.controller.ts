@@ -86,7 +86,7 @@ export class VendorsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async create(@Body() dto: CreateVendorDto, @CurrentUser() user: CurrentUserData) {
-    return this.vendorsService.create(user.tenantId, dto);
+    return this.vendorsService.create(user.tenantId, dto, user.userId);
   }
 
   @Patch(':id')
@@ -102,7 +102,7 @@ export class VendorsController {
     @Body() dto: UpdateVendorDto,
     @CurrentUser() user: CurrentUserData,
   ) {
-    return this.vendorsService.update(id, user.tenantId, dto);
+    return this.vendorsService.update(id, user.tenantId, dto, user.userId);
   }
 
   @Delete(':id')
@@ -114,7 +114,7 @@ export class VendorsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async delete(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return this.vendorsService.delete(id, user.tenantId);
+    return this.vendorsService.delete(id, user.tenantId, user.userId);
   }
 
   @Post(':id/documents')
@@ -166,7 +166,7 @@ export class VendorsController {
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserData,
   ) {
-    return this.vendorsService.triggerExtraction(id, user.tenantId);
+    return this.vendorsService.triggerExtraction(id, user.tenantId, user.userId);
   }
 
   @Get(':id/sources')

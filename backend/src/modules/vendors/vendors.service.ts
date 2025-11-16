@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nest
 import { PrismaService } from '../prisma/prisma.service';
 import { GeminiService } from '../gemini/gemini.service';
 import { QueueService } from '../queue/queue.service';
+import { AuditService } from '../../common/services/audit.service';
+import { ErrorMessages } from '../../common/constants/error-messages';
 import { CreateVendorDto } from './dto/create-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
@@ -15,6 +17,7 @@ export class VendorsService {
     private prisma: PrismaService,
     private geminiService: GeminiService,
     private queueService: QueueService,
+    private auditService: AuditService,
   ) {}
 
   async findAll(
@@ -104,13 +107,13 @@ export class VendorsService {
     });
 
     if (!vendor) {
-      throw new NotFoundException('Vendor not found');
+      throw new NotFoundException(ErrorMessages.VENDOR.NOT_FOUND);
     }
 
     return vendor;
   }
 
-  async create(tenantId: string, dto: CreateVendorDto) {
+  async create(tenantId: string, dto: CreateVendorDto, userId?: string) {
     const vendor = await this.prisma.vendor.create({
       data: {
         ...dto,
@@ -122,10 +125,27 @@ export class VendorsService {
       `Vendor created: ${vendor.id} (${vendor.name}) for tenant ${tenantId}`,
     );
 
+    // Audit log (MEDIUM #20)
+    await this.auditService.log({
+      tenantId,
+      userId,
+      action: 'CREATE_VENDOR',
+      resource: 'VENDOR',
+      resourceId: vendor.id,
+      metadata: {
+        vendorName: vendor.name,
+        type: vendor.type,
+        criticality: vendor.criticality,
+      },
+    });
+
     return vendor;
   }
 
-  async update(id: string, tenantId: string, dto: UpdateVendorDto) {
+  async update(id: string, tenantId: string, dto: UpdateVendorDto, userId?: string) {
+    // Get vendor before update for audit trail
+    const vendorBefore = await this.findOne(id, tenantId);
+
     // Update with compound WHERE clause for defense in depth
     const vendor = await this.prisma.vendor.updateMany({
       where: {
@@ -136,18 +156,34 @@ export class VendorsService {
     });
 
     if (vendor.count === 0) {
-      throw new NotFoundException('Vendor not found or access denied');
+      throw new NotFoundException(ErrorMessages.VENDOR.NOT_FOUND_OR_ACCESS_DENIED);
     }
 
     this.logger.log(
       `Vendor updated: ${id} for tenant ${tenantId}`,
     );
 
+    // Audit log (MEDIUM #20)
+    await this.auditService.log({
+      tenantId,
+      userId,
+      action: 'UPDATE_VENDOR',
+      resource: 'VENDOR',
+      resourceId: id,
+      metadata: {
+        vendorName: vendorBefore.name,
+        changes: dto,
+      },
+    });
+
     // Return the updated vendor
     return this.findOne(id, tenantId);
   }
 
-  async delete(id: string, tenantId: string) {
+  async delete(id: string, tenantId: string, userId?: string) {
+    // Get vendor before deletion for audit trail
+    const vendor = await this.findOne(id, tenantId);
+
     // Delete with compound WHERE clause for defense in depth
     const result = await this.prisma.vendor.deleteMany({
       where: {
@@ -157,12 +193,26 @@ export class VendorsService {
     });
 
     if (result.count === 0) {
-      throw new NotFoundException('Vendor not found or access denied');
+      throw new NotFoundException(ErrorMessages.VENDOR.NOT_FOUND_OR_ACCESS_DENIED);
     }
 
     this.logger.warn(
       `Vendor deleted: ${id} for tenant ${tenantId}`,
     );
+
+    // Audit log (MEDIUM #20)
+    await this.auditService.log({
+      tenantId,
+      userId,
+      action: 'DELETE_VENDOR',
+      resource: 'VENDOR',
+      resourceId: id,
+      metadata: {
+        vendorName: vendor.name,
+        type: vendor.type,
+        criticality: vendor.criticality,
+      },
+    });
 
     return { message: 'Vendor deleted successfully' };
   }
@@ -183,7 +233,7 @@ export class VendorsService {
     });
 
     if (!tenant) {
-      throw new NotFoundException('Tenant not found');
+      throw new NotFoundException(ErrorMessages.TENANT.NOT_FOUND);
     }
 
     // Upload file to Gemini File Search
@@ -209,10 +259,26 @@ export class VendorsService {
       `Document uploaded: ${document.id} (${file.originalname}) for vendor ${vendorId}`,
     );
 
+    // Audit log (MEDIUM #20)
+    await this.auditService.log({
+      tenantId,
+      userId,
+      action: 'UPLOAD_DOCUMENT',
+      resource: 'DOCUMENT',
+      resourceId: document.id,
+      metadata: {
+        vendorId,
+        vendorName: vendor.name,
+        fileName: file.originalname,
+        fileType: dto.fileType,
+        fileSize: file.size,
+      },
+    });
+
     // Automatically trigger extraction job when a new document is uploaded
     // Use try-catch to prevent extraction failures from blocking document upload
     try {
-      await this.triggerExtraction(vendorId, tenantId);
+      await this.triggerExtraction(vendorId, tenantId, userId);
     } catch (error) {
       // Log error but don't fail the upload
       // Document is saved successfully, extraction can be manually triggered
@@ -230,9 +296,9 @@ export class VendorsService {
   /**
    * Manually trigger extraction for a vendor
    */
-  async triggerExtraction(vendorId: string, tenantId: string) {
+  async triggerExtraction(vendorId: string, tenantId: string, userId?: string) {
     // Verify vendor exists and belongs to tenant
-    await this.findOne(vendorId, tenantId);
+    const vendor = await this.findOne(vendorId, tenantId);
 
     // Use transaction to ensure atomicity between job creation and queue addition
     // Fixes MEDIUM #19: No transaction in extraction job creation
@@ -261,6 +327,20 @@ export class VendorsService {
       `Extraction job created: ${extractionJob.id} for vendor ${vendorId}, tenant ${tenantId}`,
     );
 
+    // Audit log (MEDIUM #20)
+    await this.auditService.log({
+      tenantId,
+      userId,
+      action: 'TRIGGER_EXTRACTION',
+      resource: 'EXTRACTION_JOB',
+      resourceId: extractionJob.id,
+      metadata: {
+        vendorId,
+        vendorName: vendor.name,
+        jobStatus: extractionJob.status,
+      },
+    });
+
     return extractionJob;
   }
 
@@ -277,7 +357,7 @@ export class VendorsService {
     });
 
     if (!tenant) {
-      throw new NotFoundException('Tenant not found');
+      throw new NotFoundException(ErrorMessages.TENANT.NOT_FOUND);
     }
 
     // Get supporting snippets from Gemini File Search

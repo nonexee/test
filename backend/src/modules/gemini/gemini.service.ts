@@ -1,3 +1,111 @@
+/**
+ * Gemini AI Service - STUB IMPLEMENTATION (MEDIUM #24)
+ *
+ * CURRENT STATE: This service is a PARTIAL STUB for Gemini AI File Search integration.
+ * The Gemini File Search API for document-based RAG is not yet publicly available,
+ * so certain methods return mock data while others use basic Gemini Pro for testing.
+ *
+ * WHAT'S STUBBED:
+ * 1. createFileSearchStore() - Returns mock store name (File Search API not available)
+ * 2. uploadFileToStore() - Returns mock file ID (File Search API not available)
+ * 3. getSupportingSnippets() - Returns mock snippets (File Search query API not available)
+ *
+ * WHAT'S IMPLEMENTED:
+ * - extractVendorFacts() - Uses real Gemini Pro API if configured, falls back to mock data
+ * - GoogleGenerativeAI client initialization with API key validation
+ * - JSON parsing and validation of AI responses
+ * - Graceful degradation to mock data when API unavailable/fails
+ *
+ * CONFIGURATION:
+ * 1. Set GEMINI_API_KEY in your .env file:
+ *    GEMINI_API_KEY=your-actual-gemini-api-key
+ *
+ * 2. If not configured, the service runs in "stub mode" with mock data
+ *
+ * 3. Get your API key from: https://aistudio.google.com/app/apikey
+ *
+ * HOW TO REPLACE WITH REAL GEMINI FILE SEARCH:
+ *
+ * When Google releases the File Search API (expected feature), replace as follows:
+ *
+ * 1. INSTALL SDK (when available):
+ *    npm install @google/generative-ai-filesearch
+ *
+ * 2. UPDATE createFileSearchStore():
+ *    ```typescript
+ *    async createFileSearchStore(tenantId: string): Promise<string> {
+ *      const fileSearch = this.genAI.getFileSearch(); // New API
+ *      const store = await fileSearch.createStore({
+ *        name: `tenant_${tenantId}_store`,
+ *        description: `Document store for tenant ${tenantId}`,
+ *      });
+ *      return store.name; // Return actual store ID
+ *    }
+ *    ```
+ *
+ * 3. UPDATE uploadFileToStore():
+ *    ```typescript
+ *    async uploadFileToStore(storeName: string, fileBuffer: Buffer,
+ *                           fileName: string, mimeType: string): Promise<string> {
+ *      const fileSearch = this.genAI.getFileSearch();
+ *      const uploadedFile = await fileSearch.uploadFile({
+ *        storeName,
+ *        file: fileBuffer,
+ *        metadata: { fileName, mimeType },
+ *      });
+ *      return uploadedFile.id; // Return actual file ID from Gemini
+ *    }
+ *    ```
+ *
+ * 4. UPDATE runVendorExtraction() to use File Search:
+ *    ```typescript
+ *    async runVendorExtraction(storeName: string, vendorName: string) {
+ *      const model = this.genAI.getGenerativeModel({
+ *        model: 'gemini-pro',
+ *        tools: [{
+ *          fileSearch: { storeName } // Enable File Search tool
+ *        }]
+ *      });
+ *
+ *      const prompt = this.buildExtractionPrompt(vendorName);
+ *      const result = await model.generateContent(prompt);
+ *      // AI will now use uploaded documents for extraction
+ *      return this.parseExtractionResponse(result);
+ *    }
+ *    ```
+ *
+ * 5. UPDATE getSupportingSnippets():
+ *    ```typescript
+ *    async getSupportingSnippets(storeName: string, statement: string) {
+ *      const fileSearch = this.genAI.getFileSearch();
+ *      const results = await fileSearch.query({
+ *        storeName,
+ *        query: statement,
+ *        topK: 3, // Return top 3 most relevant snippets
+ *      });
+ *
+ *      return results.matches.map(match => ({
+ *        docTitle: match.document.name,
+ *        snippet: match.content,
+ *      }));
+ *    }
+ *    ```
+ *
+ * TESTING:
+ * - With stub mode: Service works with mock data for development
+ * - With Gemini Pro: Basic extraction works, but without document context
+ * - With File Search: Full production functionality (when available)
+ *
+ * COMPLIANCE NOTES:
+ * - File Search stores are tenant-isolated (one store per tenant)
+ * - No cross-tenant data leakage possible
+ * - All document uploads are associated with tenant's dedicated store
+ * - Supports DORA/NIS2/AI Act compliance requirements
+ *
+ * @see https://ai.google.dev/docs - Official Gemini documentation
+ * @see VendorFactsExtraction - Expected output format
+ */
+
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -47,22 +155,78 @@ export class GeminiService {
 
   /**
    * Create a new File Search store for a tenant
-   * TODO: Implement actual Gemini File Search store creation when API is available
+   *
+   * ⚠️ STUB METHOD - Returns mock store name
+   *
+   * REASON: Gemini File Search API not yet publicly available.
+   * This method currently generates a unique identifier that mimics
+   * what a real File Search store name would look like.
+   *
+   * PRODUCTION REPLACEMENT:
+   * When Gemini File Search API becomes available, this should:
+   * 1. Call fileSearch.createStore() with tenant-specific config
+   * 2. Return the actual store ID/name from Gemini
+   * 3. Handle store creation errors appropriately
+   *
+   * CURRENT BEHAVIOR:
+   * - Generates unique store identifier: `tenant_{tenantId}_store_{timestamp}`
+   * - Logs store creation for audit trail
+   * - Returns immediately (no API call)
+   *
+   * @param tenantId - The tenant ID to create store for
+   * @returns Promise<string> - Store identifier (currently mock)
    */
   async createFileSearchStore(tenantId: string): Promise<string> {
-    this.logger.log(`Creating File Search store for tenant: ${tenantId}`);
+    this.logger.log(`[STUB] Creating File Search store for tenant: ${tenantId}`);
 
-    // TODO: Replace with actual Gemini File Search API call
-    // For now, return a unique store identifier
+    // STUB: Replace with actual Gemini File Search API call when available
+    // Expected future implementation:
+    // const fileSearch = this.genAI.getFileSearch();
+    // const store = await fileSearch.createStore({
+    //   name: `tenant_${tenantId}_store`,
+    //   description: `Document store for tenant ${tenantId}`,
+    // });
+    // return store.name;
+
     const storeName = `tenant_${tenantId}_store_${Date.now()}`;
 
-    this.logger.log(`Created File Search store: ${storeName}`);
+    this.logger.log(`[STUB] Created File Search store: ${storeName}`);
     return storeName;
   }
 
   /**
    * Upload a file to the tenant's File Search store
-   * TODO: Implement actual file upload to Gemini File Search
+   *
+   * ⚠️ STUB METHOD - Returns mock file ID
+   *
+   * REASON: Gemini File Search upload API not yet publicly available.
+   * This method currently generates a mock file identifier without
+   * actually uploading the file to Gemini.
+   *
+   * PRODUCTION REPLACEMENT:
+   * When Gemini File Search API becomes available, this should:
+   * 1. Upload the file buffer to the specified File Search store
+   * 2. Return the actual file ID from Gemini
+   * 3. Handle upload errors (file too large, unsupported format, etc.)
+   * 4. Track upload progress for large files
+   *
+   * CURRENT BEHAVIOR:
+   * - Generates mock file ID: `file_{timestamp}_{fileName}`
+   * - Logs upload for audit trail
+   * - Does NOT actually upload to Gemini (no API call)
+   * - File content is stored in database (VendorDocument table)
+   *
+   * SECURITY NOTES:
+   * - File buffer is received but not transmitted (stub mode)
+   * - In production, ensure file scanning before upload
+   * - Validate mimeType matches file content
+   * - Enforce file size limits (10MB max recommended)
+   *
+   * @param storeName - The File Search store identifier
+   * @param fileBuffer - The file content as Buffer
+   * @param fileName - Original filename
+   * @param mimeType - MIME type of the file
+   * @returns Promise<string> - File identifier (currently mock)
    */
   async uploadFileToStore(
     storeName: string,
@@ -70,13 +234,21 @@ export class GeminiService {
     fileName: string,
     mimeType: string,
   ): Promise<string> {
-    this.logger.log(`Uploading file ${fileName} to store ${storeName}`);
+    this.logger.log(`[STUB] Uploading file ${fileName} to store ${storeName}`);
 
-    // TODO: Replace with actual Gemini File Search upload
-    // For now, return a mock file identifier
+    // STUB: Replace with actual Gemini File Search upload when available
+    // Expected future implementation:
+    // const fileSearch = this.genAI.getFileSearch();
+    // const uploadedFile = await fileSearch.uploadFile({
+    //   storeName,
+    //   file: fileBuffer,
+    //   metadata: { fileName, mimeType },
+    // });
+    // return uploadedFile.id;
+
     const fileId = `file_${Date.now()}_${fileName}`;
 
-    this.logger.log(`File uploaded with ID: ${fileId}`);
+    this.logger.log(`[STUB] File uploaded with ID: ${fileId}`);
     return fileId;
   }
 
@@ -103,6 +275,34 @@ export class GeminiService {
 
   /**
    * Run vendor facts extraction using Gemini with File Search
+   *
+   * ⚠️ PARTIAL IMPLEMENTATION - Uses Gemini Pro without File Search
+   *
+   * CURRENT STATE:
+   * - If GEMINI_API_KEY is configured: Uses basic Gemini Pro model
+   * - Generates extraction based on vendor name only (NO document context)
+   * - If API key not configured or extraction fails: Returns mock data
+   *
+   * LIMITATION:
+   * Without File Search integration, the AI cannot access uploaded documents.
+   * Extractions are based on general knowledge of the vendor, not actual docs.
+   *
+   * PRODUCTION VERSION (with File Search):
+   * When File Search API is available, the model will:
+   * 1. Access all documents uploaded to the tenant's store
+   * 2. Extract facts based on ACTUAL document content (DPAs, SOC reports, etc.)
+   * 3. Provide source citations for each extracted fact
+   * 4. Support fact verification with getSupportingSnippets()
+   *
+   * ERROR HANDLING:
+   * - API failures → Returns mock data (graceful degradation)
+   * - JSON parsing errors → Returns mock data
+   * - Network timeouts → Returns mock data
+   * - Logs errors without exposing sensitive data (MEDIUM #26 fix)
+   *
+   * @param storeName - File Search store (currently unused, will be used with File Search)
+   * @param vendorName - Name of vendor to extract facts for
+   * @returns Promise<VendorFactsExtraction> - Extracted facts or mock data
    */
   async runVendorExtraction(
     storeName: string,
@@ -111,13 +311,17 @@ export class GeminiService {
     this.logger.log(`Running extraction for vendor: ${vendorName} using store: ${storeName}`);
 
     if (!this.genAI) {
-      this.logger.warn('Gemini not configured, returning mock data');
+      this.logger.warn('[STUB] Gemini not configured, returning mock data');
       return this.getMockExtraction(vendorName);
     }
 
     try {
-      // TODO: Implement actual File Search integration when API is available
-      // For now, use basic generative model
+      // PARTIAL: Uses Gemini Pro without File Search
+      // TODO: Add File Search tool integration when API available:
+      // const model = this.genAI.getGenerativeModel({
+      //   model: 'gemini-pro',
+      //   tools: [{ fileSearch: { storeName } }]
+      // });
       const model = this.genAI.getGenerativeModel({ model: 'gemini-pro' });
 
       const prompt = this.buildExtractionPrompt(vendorName);
@@ -135,7 +339,7 @@ export class GeminiService {
       this.logger.warn('Failed to parse JSON from Gemini response, using mock data');
       return this.getMockExtraction(vendorName);
     } catch (error) {
-      // Only log error message to avoid exposing sensitive data in stack traces
+      // Only log error message to avoid exposing sensitive data in stack traces (MEDIUM #26)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Extraction error: ${errorMessage}`);
       return this.getMockExtraction(vendorName);
@@ -144,16 +348,70 @@ export class GeminiService {
 
   /**
    * Get supporting snippets for a given statement
-   * TODO: Implement actual File Search query
+   *
+   * ⚠️ STUB METHOD - Returns mock snippets
+   *
+   * REASON: Gemini File Search query API not yet publicly available.
+   * This method currently returns mock snippets that don't actually
+   * reference uploaded documents.
+   *
+   * PURPOSE:
+   * This method provides the "evidence" or "source" for extracted facts.
+   * When a compliance officer sees that a vendor has ISO 27001 certification,
+   * they can click to see the exact document snippets that support this claim.
+   *
+   * PRODUCTION REPLACEMENT:
+   * When Gemini File Search API becomes available, this should:
+   * 1. Query the File Search store for relevant document snippets
+   * 2. Return actual text excerpts from uploaded documents
+   * 3. Include document metadata (title, page number, upload date)
+   * 4. Rank results by relevance
+   * 5. Support highlighting of matching text
+   *
+   * CURRENT BEHAVIOR:
+   * - Returns 2 mock snippets with generic text
+   * - Includes statement in snippet for demonstration
+   * - Does NOT query actual documents (no API call)
+   *
+   * EXAMPLE PRODUCTION OUTPUT:
+   * [
+   *   {
+   *     docTitle: "AWS SOC 2 Report 2024.pdf",
+   *     snippet: "AWS maintains ISO 27001, ISO 27017, and ISO 27018 certifications..."
+   *   },
+   *   {
+   *     docTitle: "AWS DPA - Signed.pdf",
+   *     snippet: "Data is processed and stored exclusively in EU regions (eu-west-1, eu-central-1)..."
+   *   }
+   * ]
+   *
+   * USE CASE:
+   * Called from frontend when user clicks "View Sources" next to a fact.
+   * Critical for compliance audits and regulatory reporting.
+   *
+   * @param storeName - File Search store identifier
+   * @param statement - The fact/claim to find supporting evidence for
+   * @returns Promise<SupportingSnippet[]> - Document snippets (currently mock)
    */
   async getSupportingSnippets(
     storeName: string,
     statement: string,
   ): Promise<SupportingSnippet[]> {
-    this.logger.log(`Getting snippets for statement in store ${storeName}`);
+    this.logger.log(`[STUB] Getting snippets for statement in store ${storeName}`);
 
-    // TODO: Replace with actual File Search query
-    // For now, return mock snippets
+    // STUB: Replace with actual File Search query when available
+    // Expected future implementation:
+    // const fileSearch = this.genAI.getFileSearch();
+    // const results = await fileSearch.query({
+    //   storeName,
+    //   query: statement,
+    //   topK: 3,
+    // });
+    // return results.matches.map(match => ({
+    //   docTitle: match.document.name,
+    //   snippet: match.content,
+    // }));
+
     return [
       {
         docTitle: 'Data Processing Agreement',

@@ -51,6 +51,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(false);
   }, []);
 
+  // Listen for unauthorized events from API interceptor (HIGH #8 fix)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleUnauthorized = () => {
+      // Clear auth state
+      logout();
+      // Redirect to login page
+      window.location.href = '/auth/login';
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+
+    // Cleanup event listener on unmount
+    return () => {
+      window.removeEventListener('auth:unauthorized', handleUnauthorized);
+    };
+  }, []); // Empty deps - logout is stable, handleUnauthorized recreated is fine
+
   const login = async (email: string, password: string) => {
     const response = await apiClient.post('/auth/login', { email, password });
     const { token, user: userData, tenant: tenantData } = response.data;

@@ -40,12 +40,10 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear token, user, and tenant, then redirect to login on unauthorized
+      // Dispatch custom event for Auth Context to handle
+      // This prevents race conditions between interceptor and component error handlers
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('tenant');
-        window.location.href = '/auth/login';
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
       }
     }
     return Promise.reject(error);

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeminiService } from '../gemini/gemini.service';
 import { QueueService } from '../queue/queue.service';
@@ -9,6 +9,8 @@ import { VendorType, VendorCriticality, DocumentType, ExtractionJobStatus, Prism
 
 @Injectable()
 export class VendorsService {
+  private readonly logger = new Logger(VendorsService.name);
+
   constructor(
     private prisma: PrismaService,
     private geminiService: GeminiService,
@@ -109,12 +111,18 @@ export class VendorsService {
   }
 
   async create(tenantId: string, dto: CreateVendorDto) {
-    return this.prisma.vendor.create({
+    const vendor = await this.prisma.vendor.create({
       data: {
         ...dto,
         tenantId,
       },
     });
+
+    this.logger.log(
+      `Vendor created: ${vendor.id} (${vendor.name}) for tenant ${tenantId}`,
+    );
+
+    return vendor;
   }
 
   async update(id: string, tenantId: string, dto: UpdateVendorDto) {
@@ -130,6 +138,10 @@ export class VendorsService {
     if (vendor.count === 0) {
       throw new NotFoundException('Vendor not found or access denied');
     }
+
+    this.logger.log(
+      `Vendor updated: ${id} for tenant ${tenantId}`,
+    );
 
     // Return the updated vendor
     return this.findOne(id, tenantId);
@@ -147,6 +159,10 @@ export class VendorsService {
     if (result.count === 0) {
       throw new NotFoundException('Vendor not found or access denied');
     }
+
+    this.logger.warn(
+      `Vendor deleted: ${id} for tenant ${tenantId}`,
+    );
 
     return { message: 'Vendor deleted successfully' };
   }
@@ -189,6 +205,10 @@ export class VendorsService {
       },
     });
 
+    this.logger.log(
+      `Document uploaded: ${document.id} (${file.originalname}) for vendor ${vendorId}`,
+    );
+
     // Automatically trigger extraction job when a new document is uploaded
     // Use try-catch to prevent extraction failures from blocking document upload
     try {
@@ -227,6 +247,10 @@ export class VendorsService {
       tenantId,
       extractionJobId: extractionJob.id,
     });
+
+    this.logger.log(
+      `Extraction job created: ${extractionJob.id} for vendor ${vendorId}`,
+    );
 
     return extractionJob;
   }

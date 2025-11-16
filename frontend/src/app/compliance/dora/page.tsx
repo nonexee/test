@@ -134,7 +134,12 @@ export default function DoraRegisterPage() {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `dora-register-${tenant?.name || 'export'}-${new Date().toISOString().split('T')[0]}.csv`);
+
+    // Sanitize tenant name for filename (remove invalid filename characters)
+    const sanitizedName = tenant?.name?.replace(/[/\\:*?"<>|]/g, '-') || 'export';
+    const date = new Date().toISOString().split('T')[0];
+    link.setAttribute('download', `dora-register-${sanitizedName}-${date}.csv`);
+
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();

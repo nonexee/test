@@ -17,11 +17,11 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "migrate": "prisma migrate deploy",
-    "migrate:dev": "prisma migrate dev",
-    "migrate:reset": "prisma migrate reset",
-    "prisma:generate": "prisma generate",
-    "prisma:studio": "prisma studio",
+    "migrate": "prisma migrate deploy --schema=../prisma/schema.prisma",
+    "migrate:dev": "prisma migrate dev --schema=../prisma/schema.prisma",
+    "migrate:reset": "prisma migrate reset --schema=../prisma/schema.prisma",
+    "prisma:generate": "prisma generate --schema=../prisma/schema.prisma",
+    "prisma:studio": "prisma studio --schema=../prisma/schema.prisma",
     "worker:extraction": "ts-node src/workers/extraction.worker.ts"
   },
   "dependencies": {

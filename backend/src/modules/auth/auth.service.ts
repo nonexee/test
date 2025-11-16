@@ -69,7 +69,7 @@ export class AuthService {
       };
     } catch (error) {
       // Handle Prisma unique constraint violation (P2002)
-      if (error.code === 'P2002') {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
         throw new ConflictException('User with this email already exists');
       }
       throw error;

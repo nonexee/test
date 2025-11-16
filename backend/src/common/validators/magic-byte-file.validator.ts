@@ -1,4 +1,16 @@
 import { FileValidator } from '@nestjs/common';
+import type { FileTypeResult } from 'file-type';
+
+// Cache the file-type import to avoid repeated dynamic imports
+let fileTypeFromBufferCache: ((buffer: Uint8Array | ArrayBuffer) => Promise<FileTypeResult | undefined>) | null = null;
+
+async function getFileTypeFromBuffer() {
+  if (!fileTypeFromBufferCache) {
+    const { fileTypeFromBuffer } = await import('file-type');
+    fileTypeFromBufferCache = fileTypeFromBuffer;
+  }
+  return fileTypeFromBufferCache;
+}
 
 export class MagicByteFileValidator extends FileValidator {
   private allowedTypes: string[];
@@ -13,8 +25,8 @@ export class MagicByteFileValidator extends FileValidator {
       return false;
     }
 
-    // Import file-type dynamically to check magic bytes
-    const { fileTypeFromBuffer } = await import('file-type');
+    // Use cached file-type import to check magic bytes
+    const fileTypeFromBuffer = await getFileTypeFromBuffer();
     const fileType = await fileTypeFromBuffer(file.buffer);
 
     if (!fileType) {

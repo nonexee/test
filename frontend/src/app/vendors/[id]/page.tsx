@@ -78,6 +78,31 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
     }
   }, [user, authLoading, params.id]);
 
+  // Poll for extraction progress
+  useEffect(() => {
+    if (!extracting || !vendor) return;
+
+    const interval = setInterval(async () => {
+      await fetchVendorDetail();
+    }, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [extracting, vendor]);
+
+  // Check extraction job status and stop polling when complete
+  useEffect(() => {
+    if (!extracting || !vendor) return;
+
+    // Check if there's a running extraction job
+    const latestJob = vendor.extractionJobs?.[0]; // Assuming jobs are sorted by createdAt desc
+    if (latestJob) {
+      // Stop polling if job is completed or errored
+      if (latestJob.status === 'SUCCESS' || latestJob.status === 'ERROR') {
+        setExtracting(false);
+      }
+    }
+  }, [vendor, extracting]);
+
   const fetchVendorDetail = async () => {
     try {
       setLoading(true);
@@ -162,11 +187,11 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       await apiClient.post(`/vendors/${params.id}/extract`);
 
       // Refresh vendor data to show new extraction job
+      // Don't set extracting to false - let polling handle it
       await fetchVendorDetail();
     } catch (err: any) {
       setExtractError(err.response?.data?.message || 'Failed to trigger extraction');
-    } finally {
-      setExtracting(false);
+      setExtracting(false); // Only set to false on error
     }
   };
 
@@ -446,13 +471,31 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
             </div>
           )}
 
+          {/* Extraction progress indicator */}
+          {extracting && vendor.extractionJobs.length > 0 && (
+            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                <div>
+                  <div className="font-semibold text-blue-900">Extraction in progress...</div>
+                  <div className="text-sm text-blue-700">
+                    Status: {vendor.extractionJobs[0].status}
+                  </div>
+                  <div className="text-xs text-blue-600 mt-1">
+                    This may take a few minutes. Page will update automatically.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {vendor.documents.length === 0 && (
             <div className="text-center py-8 text-gray-500">
               Upload documents first to extract facts.
             </div>
           )}
 
-          {vendor.documents.length > 0 && !vendor.facts && (
+          {vendor.documents.length > 0 && !vendor.facts && !extracting && (
             <div className="text-center py-8 text-gray-500">
               No facts extracted yet. Click "Trigger Extraction" to analyze documents.
             </div>

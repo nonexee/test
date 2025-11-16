@@ -7,9 +7,11 @@ import { JwtService } from '@nestjs/jwt';
 import { User, Tenant } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeminiService } from '../gemini/gemini.service';
+import { AuditService } from '../../common/services/audit.service';
 import { RegisterTenantDto } from './dto/register-tenant.dto';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -17,6 +19,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private geminiService: GeminiService,
+    private auditService: AuditService,
   ) {}
 
   async registerTenant(dto: RegisterTenantDto) {
@@ -52,11 +55,29 @@ export class AuthService {
         return { tenant, user };
       });
 
-      // Generate JWT
-      const token = this.generateToken(result.user.id, result.tenant.id, 'ADMIN');
+      // Generate access and refresh tokens (HIGH #12, MEDIUM #25)
+      const { accessToken, refreshToken } = await this.generateTokens(
+        result.user.id,
+        result.tenant.id,
+        'ADMIN'
+      );
+
+      // Audit log for tenant registration (MEDIUM #20)
+      await this.auditService.log({
+        tenantId: result.tenant.id,
+        userId: result.user.id,
+        action: 'REGISTER_TENANT',
+        resource: 'TENANT',
+        resourceId: result.tenant.id,
+        metadata: {
+          tenantName: result.tenant.name,
+          adminEmail: result.user.email,
+        },
+      });
 
       return {
-        token,
+        accessToken,
+        refreshToken,
         user: {
           id: result.user.id,
           email: result.user.email,
@@ -90,14 +111,45 @@ export class AuthService {
 
     // Check both user existence and password validity
     if (!user || !isPasswordValid) {
+      // Audit failed login attempt (MEDIUM #20)
+      if (user) {
+        await this.auditService.log({
+          tenantId: user.tenantId,
+          userId: user.id,
+          action: 'LOGIN_FAILED',
+          resource: 'USER',
+          resourceId: user.id,
+          metadata: {
+            reason: 'Invalid password',
+            email: dto.email,
+          },
+        });
+      }
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Generate JWT
-    const token = this.generateToken(user.id, user.tenantId, user.role);
+    // Generate access and refresh tokens (HIGH #12, MEDIUM #25)
+    const { accessToken, refreshToken } = await this.generateTokens(
+      user.id,
+      user.tenantId,
+      user.role
+    );
+
+    // Audit successful login (MEDIUM #20)
+    await this.auditService.log({
+      tenantId: user.tenantId,
+      userId: user.id,
+      action: 'LOGIN_SUCCESS',
+      resource: 'USER',
+      resourceId: user.id,
+      metadata: {
+        email: user.email,
+      },
+    });
 
     return {
-      token,
+      accessToken,
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -110,14 +162,133 @@ export class AuthService {
     };
   }
 
-  private generateToken(userId: string, tenantId: string, role: string): string {
+  /**
+   * Generate both access and refresh tokens (HIGH #12, MEDIUM #25)
+   */
+  private async generateTokens(userId: string, tenantId: string, role: string) {
     const payload = {
       sub: userId,
       tenantId,
       role,
     };
 
-    return this.jwtService.sign(payload);
+    // Access token: Short-lived (15 minutes)
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: '15m',
+    });
+
+    // Refresh token: Long-lived (7 days), stored in database
+    const refreshToken = randomBytes(32).toString('hex');
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+
+    // Store refresh token in database
+    await this.prisma.refreshToken.create({
+      data: {
+        token: refreshToken,
+        userId,
+        expiresAt,
+      },
+    });
+
+    return { accessToken, refreshToken };
+  }
+
+  /**
+   * Refresh access token using refresh token (MEDIUM #25)
+   */
+  async refreshAccessToken(refreshToken: string) {
+    // Find refresh token in database
+    const tokenRecord = await this.prisma.refreshToken.findUnique({
+      where: { token: refreshToken },
+      include: {
+        user: {
+          include: {
+            tenant: true,
+          },
+        },
+      },
+    });
+
+    // Check if token exists, not revoked, and not expired
+    if (!tokenRecord || tokenRecord.isRevoked || tokenRecord.expiresAt < new Date()) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    // Generate new access token
+    const payload = {
+      sub: tokenRecord.user.id,
+      tenantId: tokenRecord.user.tenantId,
+      role: tokenRecord.user.role,
+    };
+
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: '15m',
+    });
+
+    // Audit token refresh (MEDIUM #20)
+    await this.auditService.log({
+      tenantId: tokenRecord.user.tenantId,
+      userId: tokenRecord.user.id,
+      action: 'TOKEN_REFRESH',
+      resource: 'USER',
+      resourceId: tokenRecord.user.id,
+    });
+
+    return {
+      accessToken,
+      user: {
+        id: tokenRecord.user.id,
+        email: tokenRecord.user.email,
+        role: tokenRecord.user.role,
+      },
+      tenant: {
+        id: tokenRecord.user.tenant.id,
+        name: tokenRecord.user.tenant.name,
+      },
+    };
+  }
+
+  /**
+   * Revoke refresh token (logout)
+   */
+  async revokeRefreshToken(refreshToken: string) {
+    const tokenRecord = await this.prisma.refreshToken.findUnique({
+      where: { token: refreshToken },
+      include: { user: true },
+    });
+
+    if (tokenRecord) {
+      await this.prisma.refreshToken.update({
+        where: { token: refreshToken },
+        data: {
+          isRevoked: true,
+          revokedAt: new Date(),
+        },
+      });
+
+      // Audit logout (MEDIUM #20)
+      await this.auditService.log({
+        tenantId: tokenRecord.user.tenantId,
+        userId: tokenRecord.user.id,
+        action: 'LOGOUT',
+        resource: 'USER',
+        resourceId: tokenRecord.user.id,
+      });
+    }
+  }
+
+  /**
+   * Revoke all refresh tokens for a user
+   */
+  async revokeAllUserTokens(userId: string) {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, isRevoked: false },
+      data: {
+        isRevoked: true,
+        revokedAt: new Date(),
+      },
+    });
   }
 
   async validateUser(userId: string): Promise<(User & { tenant: Tenant }) | null> {

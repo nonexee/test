@@ -79,6 +79,7 @@ model Tenant {
   users          User[]
   vendors        Vendor[]
   extractionJobs ExtractionJob[]
+  auditLogs      AuditLog[]
 
   @@index([name])
   @@map("tenants")
@@ -98,6 +99,8 @@ model User {
 
   // Relations
   uploadedDocuments VendorDocument[]
+  refreshTokens     RefreshToken[]
+  auditLogs         AuditLog[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -212,4 +215,52 @@ model ExtractionJob {
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
   @@map("extraction_jobs")
+}
+
+// Refresh tokens for secure JWT rotation (MEDIUM #25, HIGH #12)
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  // Track if token has been used (for rotation)
+  isRevoked Boolean  @default(false)
+  revokedAt DateTime?
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// Audit log for compliance and security tracking (MEDIUM #20)
+model AuditLog {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action    String   // CREATE_VENDOR, UPDATE_VENDOR, DELETE_VENDOR, etc.
+  resource  String   // VENDOR, DOCUMENT, USER, etc.
+  resourceId String?
+
+  metadata  Json?    // Additional context (old/new values, IP, etc.)
+  ipAddress String?
+  userAgent String?  @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([action])
+  @@index([resource])
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action])
+  @@map("audit_logs")
 }

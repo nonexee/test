@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { GeminiModule } from '../gemini/gemini.module';
+import { AuditService } from '../../common/services/audit.service';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { GeminiModule } from '../gemini/gemini.module';
     GeminiModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, AuditService],
   exports: [AuthService, JwtStrategy],
 })
 export class AuthModule {}

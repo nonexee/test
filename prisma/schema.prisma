@@ -76,8 +76,9 @@ model Tenant {
   geminiFileSearchStoreName String @unique
 
   // Relations
-  users   User[]
-  vendors Vendor[]
+  users          User[]
+  vendors        Vendor[]
+  extractionJobs ExtractionJob[]
 
   @@index([name])
   @@map("tenants")
@@ -200,8 +201,15 @@ model ExtractionJob {
   vendorId String
   vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
+  // Tenant isolation for efficient queries and security
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([vendorId])
   @@index([status])
   @@index([createdAt])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
   @@map("extraction_jobs")
 }

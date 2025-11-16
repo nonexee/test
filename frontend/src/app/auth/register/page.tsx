@@ -16,8 +16,9 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
 
   const validatePassword = (password: string): string | null => {
-    // Match backend regex pattern exactly: /((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/
-    const passwordRegex = /((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/;
+    // Simplified regex - matches backend: /^(?=.*[a-z])(?=.*[A-Z])(?=.*[\d\W]).{8,}$/
+    // Requires: 1 lowercase, 1 uppercase, 1 number/special char, min 8 chars
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[\d\W]).{8,}$/;
 
     if (password.length < 8) {
       return 'Password must be at least 8 characters long';

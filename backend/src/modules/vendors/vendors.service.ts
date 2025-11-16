@@ -233,23 +233,31 @@ export class VendorsService {
     // Verify vendor exists and belongs to tenant
     await this.findOne(vendorId, tenantId);
 
-    // Create extraction job record
-    const extractionJob = await this.prisma.extractionJob.create({
-      data: {
-        vendorId,
-        status: ExtractionJobStatus.PENDING,
-      },
-    });
+    // Use transaction to ensure atomicity between job creation and queue addition
+    // Fixes MEDIUM #19: No transaction in extraction job creation
+    const extractionJob = await this.prisma.$transaction(async (tx) => {
+      // Create extraction job record with tenantId for proper isolation
+      // Fixes HIGH #6: No tenant isolation on ExtractionJob queries
+      const job = await tx.extractionJob.create({
+        data: {
+          vendorId,
+          tenantId, // Now includes tenantId for efficient tenant-scoped queries
+          status: ExtractionJobStatus.PENDING,
+        },
+      });
 
-    // Add job to queue
-    await this.queueService.addExtractionJob({
-      vendorId,
-      tenantId,
-      extractionJobId: extractionJob.id,
+      // Add job to queue (if this fails, transaction rolls back)
+      await this.queueService.addExtractionJob({
+        vendorId,
+        tenantId,
+        extractionJobId: job.id,
+      });
+
+      return job;
     });
 
     this.logger.log(
-      `Extraction job created: ${extractionJob.id} for vendor ${vendorId}`,
+      `Extraction job created: ${extractionJob.id} for vendor ${vendorId}, tenant ${tenantId}`,
     );
 
     return extractionJob;

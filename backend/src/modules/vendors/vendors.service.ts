@@ -190,7 +190,18 @@ export class VendorsService {
     });
 
     // Automatically trigger extraction job when a new document is uploaded
-    await this.triggerExtraction(vendorId, tenantId);
+    // Use try-catch to prevent extraction failures from blocking document upload
+    try {
+      await this.triggerExtraction(vendorId, tenantId);
+    } catch (error) {
+      // Log error but don't fail the upload
+      // Document is saved successfully, extraction can be manually triggered
+      this.logger.error(
+        `Failed to auto-trigger extraction for vendor ${vendorId} after document upload`,
+        error,
+      );
+      // Don't throw - document upload succeeded
+    }
 
     return document;
   }

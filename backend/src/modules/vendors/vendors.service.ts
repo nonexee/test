@@ -21,6 +21,7 @@ export class VendorsService {
       type?: VendorType;
       criticality?: VendorCriticality;
       search?: string;
+      includeFacts?: boolean;
     },
   ) {
     const where: Prisma.VendorWhereInput = { tenantId };
@@ -43,11 +44,13 @@ export class VendorsService {
     const vendors = await this.prisma.vendor.findMany({
       where,
       include: {
-        facts: {
-          select: {
-            vendorId: true,
-          },
-        },
+        facts: filters?.includeFacts
+          ? true
+          : {
+              select: {
+                vendorId: true,
+              },
+            },
         _count: {
           select: {
             documents: true,
@@ -69,6 +72,9 @@ export class VendorsService {
       updatedAt: vendor.updatedAt,
       hasFacts: !!vendor.facts,
       documentCount: vendor._count.documents,
+      ...(filters?.includeFacts && vendor.facts
+        ? { facts: vendor.facts }
+        : {}),
     }));
   }
 

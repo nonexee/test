@@ -12,7 +12,8 @@ interface DoraVendor {
   type: string;
   criticality: string;
   status: string;
-  facts: {
+  hasFacts: boolean;
+  facts?: {
     dataCategories: string[];
     regions: string[];
     subProcessors: Array<{ name: string; region: string; role: string }>;
@@ -50,15 +51,15 @@ export default function DoraRegisterPage() {
   const fetchDoraVendors = async () => {
     try {
       setLoading(true);
-      // Fetch all vendors
-      const response = await apiClient.get('/vendors');
+      // Fetch all vendors with full facts
+      const response = await apiClient.get('/vendors?includeFacts=true');
       const allVendors = response.data;
 
       // Filter to only DORA-relevant vendors with facts
       const doraVendors = allVendors
         .filter((v: DoraVendor) => v.facts?.regulatoryRelevance?.dora === true)
         .sort((a: DoraVendor, b: DoraVendor) => {
-          // Sort by criticality: CRITICAL > HIGH > MEDIUM > LOW
+          // Sort by criticality: HIGH > MEDIUM > LOW
           const criticalityOrder: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1 };
           return (criticalityOrder[b.criticality] || 0) - (criticalityOrder[a.criticality] || 0);
         });

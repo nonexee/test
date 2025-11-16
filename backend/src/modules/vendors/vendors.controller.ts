@@ -35,11 +35,13 @@ export class VendorsController {
     @Query('type') type?: VendorType,
     @Query('criticality') criticality?: VendorCriticality,
     @Query('search') search?: string,
+    @Query('includeFacts') includeFacts?: string,
   ) {
     return this.vendorsService.findAll(user.tenantId, {
       type,
       criticality,
       search,
+      includeFacts: includeFacts === 'true',
     });
   }
 

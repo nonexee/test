@@ -85,7 +85,7 @@ model Tenant {
 
 model User {
   id           String   @id @default(uuid())
-  email        String   @unique
+  email        String
   passwordHash String
   role         UserRole @default(VIEWER)
   createdAt    DateTime @default(now())
@@ -98,9 +98,9 @@ model User {
   // Relations
   uploadedDocuments VendorDocument[]
 
+  @@unique([tenantId, email])
   @@index([tenantId])
   @@index([email])
-  @@index([tenantId, email])
   @@map("users")
 }
 

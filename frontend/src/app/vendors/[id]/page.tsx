@@ -62,6 +62,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileType, setFileType] = useState('CONTRACT');
   const [showSourcesFor, setShowSourcesFor] = useState<string | null>(null);
   const [sources, setSources] = useState<SourceResult | null>(null);
   const [loadingSources, setLoadingSources] = useState(false);
@@ -93,8 +94,16 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // File size validation (10MB max)
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+      if (file.size > MAX_FILE_SIZE) {
+        setUploadError(`File too large. Maximum size is 10MB (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+        return;
+      }
+
       const allowedTypes = [
         'application/pdf',
+        'application/msword', // .doc files
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'text/plain',
         'text/csv',
@@ -103,7 +112,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       ];
 
       if (!allowedTypes.includes(file.type)) {
-        setUploadError('Invalid file type. Please upload PDF, DOCX, TXT, CSV, XLS, or XLSX files.');
+        setUploadError('Invalid file type. Please upload PDF, DOC, DOCX, TXT, CSV, XLS, or XLSX files.');
         return;
       }
 
@@ -121,6 +130,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
 
       const formData = new FormData();
       formData.append('file', selectedFile);
+      formData.append('fileType', fileType);
 
       await apiClient.post(`/vendors/${params.id}/documents`, formData, {
         headers: {
@@ -129,9 +139,11 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       });
 
       setSelectedFile(null);
-      // Reset file input
-      const fileInput = document.getElementById('file-upload') as HTMLInputElement;
-      if (fileInput) fileInput.value = '';
+      // Reset file input (SSR-safe)
+      if (typeof window !== 'undefined') {
+        const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+      }
 
       // Refresh vendor data
       await fetchVendorDetail();
@@ -324,26 +336,50 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
           {/* Upload Section */}
           <div className="mb-6 p-4 bg-gray-50 rounded-lg">
             <h3 className="font-medium mb-3">Upload New Document</h3>
-            <div className="flex items-end gap-3">
-              <div className="flex-1">
-                <input
-                  id="file-upload"
-                  type="file"
-                  accept=".pdf,.docx,.txt,.csv,.xls,.xlsx"
-                  onChange={handleFileSelect}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-3">
+              <div className="md:col-span-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Document Type
+                </label>
+                <select
+                  value={fileType}
+                  onChange={(e) => setFileType(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Accepted formats: PDF, DOCX, TXT, CSV, XLS, XLSX
-                </p>
+                >
+                  <option value="CONTRACT">Contract</option>
+                  <option value="DPA">Data Processing Agreement</option>
+                  <option value="SOC2">SOC 2 Report</option>
+                  <option value="SECURITY_WHITEPAPER">Security Whitepaper</option>
+                  <option value="AI_DOC">AI Documentation</option>
+                  <option value="OTHER">Other</option>
+                </select>
               </div>
-              <button
-                onClick={handleFileUpload}
-                disabled={!selectedFile || uploadingFile}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                {uploadingFile ? 'Uploading...' : 'Upload'}
-              </button>
+              <div className="md:col-span-8">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Select File
+                </label>
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <input
+                      id="file-upload"
+                      type="file"
+                      accept=".pdf,.doc,.docx,.txt,.csv,.xls,.xlsx"
+                      onChange={handleFileSelect}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Accepted formats: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX (max 10MB)
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleFileUpload}
+                    disabled={!selectedFile || uploadingFile}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    {uploadingFile ? 'Uploading...' : 'Upload'}
+                  </button>
+                </div>
+              </div>
             </div>
             {uploadError && (
               <div className="mt-2 text-sm text-red-600">{uploadError}</div>

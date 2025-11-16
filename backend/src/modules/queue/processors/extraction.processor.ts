@@ -48,11 +48,16 @@ export class ExtractionProcessor extends WorkerHost {
         throw new Error('Vendor not found or access denied');
       }
 
+      // Validate vendor has documents
+      if (!vendor.documents || vendor.documents.length === 0) {
+        throw new Error('Cannot extract facts: vendor has no documents. Please upload documents first.');
+      }
+
       // Update job progress
       await job.updateProgress(10);
 
       // Extract facts using Gemini
-      this.logger.log(`Extracting facts for vendor ${vendor.name}`);
+      this.logger.log(`Extracting facts for vendor ${vendor.name} with ${vendor.documents.length} documents`);
       const extractedFacts = await this.geminiService.extractVendorFacts(
         vendor.id,
         vendor.tenant.geminiFileSearchStoreName,
@@ -61,6 +66,13 @@ export class ExtractionProcessor extends WorkerHost {
       await job.updateProgress(80);
 
       // Save extracted facts to database (map snake_case to camelCase)
+      // Validate impact level before casting
+      const validImpactLevels = ['LOW', 'MEDIUM', 'HIGH'] as const;
+      const impactValue = extractedFacts.impact_if_compromised?.toUpperCase();
+      const impactIfCompromised = (validImpactLevels.includes(impactValue as any)
+        ? impactValue
+        : 'MEDIUM') as 'LOW' | 'MEDIUM' | 'HIGH';
+
       const factsData = {
         dataCategories: extractedFacts.data_categories,
         regions: extractedFacts.regions,
@@ -68,7 +80,7 @@ export class ExtractionProcessor extends WorkerHost {
         servicesSupported: extractedFacts.services_supported,
         businessFunctions: extractedFacts.business_functions,
         securityHighlights: extractedFacts.security_highlights,
-        impactIfCompromised: (extractedFacts.impact_if_compromised?.toUpperCase() ?? 'MEDIUM') as 'LOW' | 'MEDIUM' | 'HIGH',
+        impactIfCompromised,
         regulatoryRelevance: extractedFacts.regulatory_relevance,
         lastExtractionAt: new Date(),
       };

@@ -11,9 +11,26 @@ async function bootstrap() {
   // Security middleware - Helmet
   app.use(helmet());
 
-  // Enable CORS
+  // Enable CORS with strict validation
+  const frontendUrl = process.env.FRONTEND_URL;
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction && !frontendUrl) {
+    throw new Error(
+      'FRONTEND_URL environment variable is required in production for CORS configuration'
+    );
+  }
+
+  const corsOrigin = frontendUrl || 'http://localhost:3000';
+
+  if (!frontendUrl) {
+    console.warn(
+      '⚠️  WARNING: FRONTEND_URL not set. Using default http://localhost:3000'
+    );
+  }
+
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: corsOrigin,
     credentials: true,
   });
 
@@ -26,14 +43,11 @@ async function bootstrap() {
     }),
   );
 
-  // API prefix
-  app.setGlobalPrefix('api');
-
   const port = configService.get<number>('app.port') || 3001;
   await app.listen(port);
 
   console.log(`🚀 VendorFlow AI Backend running on: http://localhost:${port}`);
-  console.log(`📚 API available at: http://localhost:${port}/api`);
+  console.log(`📝 CORS origin: ${corsOrigin}`);
 }
 
 bootstrap();

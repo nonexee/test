@@ -476,16 +476,20 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     {showSourcesFor === 'data_categories' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {vendor.facts.dataCategories.map((category, idx) => (
-                    <span
-                      key={idx}
-                      className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-                    >
-                      {category}
-                    </span>
-                  ))}
-                </div>
+                {vendor.facts.dataCategories.length === 0 ? (
+                  <div className="text-sm text-gray-500 italic">No data categories identified in documents</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {vendor.facts.dataCategories.map((category, idx) => (
+                      <span
+                        key={idx}
+                        className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                      >
+                        {category}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {showSourcesFor === 'data_categories' && (
                   <SourcesDisplay sources={sources} loading={loadingSources} />
                 )}
@@ -502,16 +506,20 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     {showSourcesFor === 'regions' ? 'Hide Sources' : 'Show Sources'}
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {vendor.facts.regions.map((region, idx) => (
-                    <span
-                      key={idx}
-                      className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm"
-                    >
-                      {region}
-                    </span>
-                  ))}
-                </div>
+                {vendor.facts.regions.length === 0 ? (
+                  <div className="text-sm text-gray-500 italic">No regions identified in documents</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {vendor.facts.regions.map((region, idx) => (
+                      <span
+                        key={idx}
+                        className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm"
+                      >
+                        {region}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {showSourcesFor === 'regions' && (
                   <SourcesDisplay sources={sources} loading={loadingSources} />
                 )}

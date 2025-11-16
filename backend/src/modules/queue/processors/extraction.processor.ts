@@ -68,7 +68,7 @@ export class ExtractionProcessor extends WorkerHost {
         servicesSupported: extractedFacts.services_supported,
         businessFunctions: extractedFacts.business_functions,
         securityHighlights: extractedFacts.security_highlights,
-        impactIfCompromised: extractedFacts.impact_if_compromised.toUpperCase(),
+        impactIfCompromised: (extractedFacts.impact_if_compromised?.toUpperCase() ?? 'MEDIUM') as 'LOW' | 'MEDIUM' | 'HIGH',
         regulatoryRelevance: extractedFacts.regulatory_relevance,
         lastExtractionAt: new Date(),
       };

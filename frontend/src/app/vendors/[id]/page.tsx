@@ -194,10 +194,8 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
 
   const getCriticalityColor = (criticality: string) => {
     switch (criticality) {
-      case 'CRITICAL':
-        return 'bg-red-100 text-red-800';
       case 'HIGH':
-        return 'bg-orange-100 text-orange-800';
+        return 'bg-red-100 text-red-800';
       case 'MEDIUM':
         return 'bg-yellow-100 text-yellow-800';
       case 'LOW':
@@ -428,7 +426,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
             <div className="space-y-6">
               {/* Last Extracted */}
               <div className="text-sm text-gray-500 mb-4">
-                Last extracted: {formatDate(vendor.facts.lastExtractedAt)}
+                Last extracted: {formatDate(vendor.facts.lastExtractionAt)}
               </div>
 
               {/* Data Categories */}

@@ -59,7 +59,7 @@ export default function DoraRegisterPage() {
         .filter((v: DoraVendor) => v.facts?.regulatoryRelevance?.dora === true)
         .sort((a: DoraVendor, b: DoraVendor) => {
           // Sort by criticality: CRITICAL > HIGH > MEDIUM > LOW
-          const criticalityOrder: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+          const criticalityOrder: Record<string, number> = { HIGH: 3, MEDIUM: 2, LOW: 1 };
           return (criticalityOrder[b.criticality] || 0) - (criticalityOrder[a.criticality] || 0);
         });
 
@@ -211,7 +211,7 @@ export default function DoraRegisterPage() {
                     Total DORA-relevant ICT service providers: <strong>{vendors.length}</strong>
                   </p>
                   <p className="text-sm text-blue-700">
-                    Critical/High criticality: <strong>{vendors.filter(v => v.criticality === 'CRITICAL' || v.criticality === 'HIGH').length}</strong>
+                    High criticality: <strong>{vendors.filter(v => v.criticality === 'HIGH').length}</strong>
                   </p>
                 </div>
               </div>
@@ -230,10 +230,8 @@ export default function DoraRegisterPage() {
                         <span className="text-gray-300">•</span>
                         <span
                           className={`text-sm font-semibold ${
-                            vendor.criticality === 'CRITICAL'
+                            vendor.criticality === 'HIGH'
                               ? 'text-red-600'
-                              : vendor.criticality === 'HIGH'
-                              ? 'text-orange-600'
                               : vendor.criticality === 'MEDIUM'
                               ? 'text-yellow-600'
                               : 'text-green-600'
@@ -345,7 +343,7 @@ export default function DoraRegisterPage() {
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-1">Last Extracted</h4>
                       <p className="text-sm text-gray-600">
-                        {new Date(vendor.facts.lastExtractedAt).toLocaleDateString()}
+                        {new Date(vendor.facts.lastExtractionAt).toLocaleDateString()}
                       </p>
                     </div>
                   </div>

@@ -5,7 +5,7 @@ import { QueueService } from '../queue/queue.service';
 import { CreateVendorDto } from './dto/create-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
-import { VendorType, VendorCriticality, DocumentType, Prisma } from '@prisma/client';
+import { VendorType, VendorCriticality, DocumentType, ExtractionJobStatus, Prisma } from '@prisma/client';
 
 @Injectable()
 export class VendorsService {
@@ -200,7 +200,7 @@ export class VendorsService {
     const extractionJob = await this.prisma.extractionJob.create({
       data: {
         vendorId,
-        status: 'PENDING',
+        status: ExtractionJobStatus.PENDING,
       },
     });
 

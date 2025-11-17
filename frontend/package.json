@@ -20,7 +20,8 @@
     "clsx": "^2.1.0",
     "date-fns": "^3.0.6",
     "tailwind-merge": "^2.2.0",
-    "zustand": "^4.4.7"
+    "zustand": "^4.4.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20.10.6",

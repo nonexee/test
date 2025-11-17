@@ -554,8 +554,20 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
           {vendor.facts && (
             <div className="space-y-6">
               {/* Last Extracted */}
-              <div className="text-sm text-gray-500 mb-4">
-                Last extracted: {vendor.facts.lastExtractionAt ? formatDate(vendor.facts.lastExtractionAt) : 'Not extracted yet'}
+              <div className="text-sm text-gray-500 mb-4 space-y-1">
+                <div>Last extracted: {vendor.facts.lastExtractionAt ? formatDate(vendor.facts.lastExtractionAt) : 'Not extracted yet'}</div>
+                {vendor.facts.extractionConfidence != null && (
+                  <div className="flex items-center gap-2">
+                    <span>Extraction confidence:</span>
+                    <span className={`font-medium ${
+                      vendor.facts.extractionConfidence >= 0.8 ? 'text-green-600' :
+                      vendor.facts.extractionConfidence >= 0.6 ? 'text-yellow-600' :
+                      'text-orange-600'
+                    }`}>
+                      {(vendor.facts.extractionConfidence * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Data Categories */}

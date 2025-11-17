@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import apiClient from '@/lib/api';
+import { formatDateShort } from '@/lib/utils/date';
 
 interface DoraVendor {
   id: string;
@@ -108,7 +109,7 @@ export default function DoraRegisterPage() {
       vendor.facts?.regulatoryRelevance?.dora ? 'Yes' : 'No',
       vendor.facts?.regulatoryRelevance?.nis2 ? 'Yes' : 'No',
       vendor.facts?.regulatoryRelevance?.ai_act ? 'Yes' : 'No',
-      vendor.facts?.lastExtractionAt ? new Date(vendor.facts.lastExtractionAt).toLocaleDateString() : '',
+      vendor.facts?.lastExtractionAt ? formatDateShort(vendor.facts.lastExtractionAt) : '',
     ]);
 
     // Escape CSV values and prevent formula injection (XSS mitigation)
@@ -158,7 +159,7 @@ export default function DoraRegisterPage() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="mb-6">
-          <Link href="/vendors" className="text-blue-600 hover:underline text-sm">
+          <Link href="/vendors" prefetch={true} className="text-blue-600 hover:underline text-sm">
             ← Back to Vendors
           </Link>
         </div>
@@ -349,7 +350,7 @@ export default function DoraRegisterPage() {
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-1">Last Extracted</h4>
                       <p className="text-sm text-gray-600">
-                        {vendor.facts?.lastExtractionAt ? new Date(vendor.facts.lastExtractionAt).toLocaleDateString() : 'Not extracted'}
+                        {vendor.facts?.lastExtractionAt ? formatDateShort(vendor.facts.lastExtractionAt) : 'Not extracted'}
                       </p>
                     </div>
                   </div>

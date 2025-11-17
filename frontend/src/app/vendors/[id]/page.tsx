@@ -6,6 +6,7 @@ import Link from 'next/link';
 import axios from 'axios';
 import { useAuth } from '@/lib/auth';
 import apiClient from '@/lib/api';
+import { formatDate } from '@/lib/utils/date';
 
 interface VendorDetail {
   id: string;
@@ -235,16 +236,6 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
   const getCriticalityColor = (criticality: string) => {
     switch (criticality) {
       case 'HIGH':
@@ -311,6 +302,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
           </div>
           <Link
             href="/vendors"
+            prefetch={true}
             className="mt-4 inline-block text-blue-600 hover:text-blue-800"
           >
             Back to Vendors
@@ -327,6 +319,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
         <div className="mb-6">
           <Link
             href="/vendors"
+            prefetch={true}
             className="text-blue-600 hover:text-blue-800 mb-2 inline-block"
           >
             &larr; Back to Vendors

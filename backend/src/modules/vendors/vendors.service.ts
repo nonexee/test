@@ -49,16 +49,13 @@ export class VendorsService {
     const vendors = await this.prisma.vendor.findMany({
       where,
       include: {
-        facts: filters?.includeFacts
-          ? true
-          : {
-              select: {
-                vendorId: true,
-              },
-            },
+        // Only include full facts when explicitly requested (LOW #40 fix)
+        ...(filters?.includeFacts && { facts: true }),
         _count: {
           select: {
             documents: true,
+            // Count facts to check existence without loading data
+            facts: true,
           },
         },
       },
@@ -75,7 +72,7 @@ export class VendorsService {
       status: vendor.status,
       createdAt: vendor.createdAt,
       updatedAt: vendor.updatedAt,
-      hasFacts: !!vendor.facts,
+      hasFacts: vendor._count.facts > 0,
       documentCount: vendor._count.documents,
       ...(filters?.includeFacts && vendor.facts
         ? { facts: vendor.facts }

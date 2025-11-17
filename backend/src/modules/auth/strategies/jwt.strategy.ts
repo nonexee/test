@@ -33,10 +33,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
+    // Validate required JWT payload fields (LOW #34 fix)
+    if (!payload.sub || !payload.tenantId || !payload.role) {
+      throw new UnauthorizedException('Invalid token payload');
+    }
+
     const user = await this.authService.validateUser(payload.sub);
 
     if (!user) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException('User not found');
+    }
+
+    // Verify user belongs to the tenant specified in JWT
+    if (user.tenantId !== payload.tenantId) {
+      throw new UnauthorizedException('Token tenant mismatch');
     }
 
     // This will be attached to request.user

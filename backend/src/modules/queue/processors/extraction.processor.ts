@@ -10,6 +10,10 @@ import { ExtractionJobData } from '../queue.service';
 export class ExtractionProcessor extends WorkerHost {
   private readonly logger = new Logger(ExtractionProcessor.name);
 
+  // Constants for impact level validation (LOW #37 fix)
+  private static readonly VALID_IMPACT_LEVELS = ['LOW', 'MEDIUM', 'HIGH'] as const;
+  private static readonly DEFAULT_IMPACT_LEVEL: 'LOW' | 'MEDIUM' | 'HIGH' = 'MEDIUM';
+
   constructor(
     private prisma: PrismaService,
     private geminiService: GeminiService,
@@ -66,12 +70,11 @@ export class ExtractionProcessor extends WorkerHost {
       await job.updateProgress(80);
 
       // Save extracted facts to database (map snake_case to camelCase)
-      // Validate impact level before casting
-      const validImpactLevels = ['LOW', 'MEDIUM', 'HIGH'] as const;
+      // Validate impact level before casting (CRITICAL #4 + LOW #37 fixes)
       const impactValue = extractedFacts.impact_if_compromised?.toUpperCase();
-      const impactIfCompromised = (validImpactLevels.includes(impactValue as any)
+      const impactIfCompromised = (ExtractionProcessor.VALID_IMPACT_LEVELS.includes(impactValue as any)
         ? impactValue
-        : 'MEDIUM') as 'LOW' | 'MEDIUM' | 'HIGH';
+        : ExtractionProcessor.DEFAULT_IMPACT_LEVEL) as 'LOW' | 'MEDIUM' | 'HIGH';
 
       const factsData = {
         dataCategories: extractedFacts.data_categories,

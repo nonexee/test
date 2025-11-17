@@ -7,6 +7,8 @@ import axios from 'axios';
 import { useAuth } from '@/lib/auth';
 import apiClient from '@/lib/api';
 import { formatDate } from '@/lib/utils/date';
+import { ErrorMessages } from '@/lib/utils/errors';
+import { apiCache, CacheKeys } from '@/lib/utils/cache';
 
 interface VendorDetail {
   id: string;
@@ -41,6 +43,12 @@ interface VendorDetail {
     createdAt: string;
     finishedAt: string | null;
   }>;
+  extractionJobsMetadata?: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
 }
 
 interface SourceResult {
@@ -68,6 +76,9 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
   const [showSourcesFor, setShowSourcesFor] = useState<string | null>(null);
   const [sources, setSources] = useState<SourceResult | null>(null);
   const [loadingSources, setLoadingSources] = useState(false);
+  const [jobsPage, setJobsPage] = useState(1);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -105,19 +116,33 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
     }
   }, [vendor, extracting]);
 
-  const fetchVendorDetail = async () => {
+  const fetchVendorDetail = async (page?: number, skipCache = false) => {
     try {
       setLoading(true);
-      const response = await apiClient.get(`/vendors/${params.id}`);
+      const currentPage = page ?? jobsPage;
+
+      // Generate cache key
+      const cacheKey = CacheKeys.vendors.detail(params.id, currentPage);
+
+      // Try to get from cache first (unless skipCache is true)
+      if (!skipCache) {
+        const cachedData = apiCache.get<VendorDetail>(cacheKey);
+        if (cachedData) {
+          setVendor(cachedData);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Fetch from API
+      const response = await apiClient.get(`/vendors/${params.id}?jobsPage=${currentPage}&jobsLimit=10`);
       setVendor(response.data);
       setError('');
+
+      // Store in cache (3 minutes TTL for detail page since it updates more frequently)
+      apiCache.set(cacheKey, response.data, 3 * 60 * 1000);
     } catch (err) {
-      const errorMessage = axios.isAxiosError(err)
-        ? err.response?.data?.message || 'Failed to fetch vendor details'
-        : err instanceof Error
-        ? err.message
-        : 'Unknown error occurred';
-      setError(errorMessage);
+      setError(ErrorMessages.vendor.fetch(err));
     } finally {
       setLoading(false);
     }
@@ -129,7 +154,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       // File size validation (10MB max)
       const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
       if (file.size > MAX_FILE_SIZE) {
-        setUploadError(`File too large. Maximum size is 10MB (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+        setUploadError(`File is too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Please select a file smaller than 10MB.`);
         return;
       }
 
@@ -144,7 +169,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       ];
 
       if (!allowedTypes.includes(file.type)) {
-        setUploadError('Invalid file type. Please upload PDF, DOC, DOCX, TXT, CSV, XLS, or XLSX files.');
+        setUploadError(`Unsupported file type (${file.type}). Please upload PDF, DOC, DOCX, TXT, CSV, XLS, or XLSX files.`);
         return;
       }
 
@@ -177,15 +202,11 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
         if (fileInput) fileInput.value = '';
       }
 
-      // Refresh vendor data
-      await fetchVendorDetail();
+      // Refresh vendor data (skip cache to get fresh data)
+      apiCache.delete(CacheKeys.vendors.detail(params.id, jobsPage));
+      await fetchVendorDetail(undefined, true);
     } catch (err) {
-      const errorMessage = axios.isAxiosError(err)
-        ? err.response?.data?.message || 'Failed to upload document'
-        : err instanceof Error
-        ? err.message
-        : 'Unknown error occurred';
-      setUploadError(errorMessage);
+      setUploadError(ErrorMessages.document.upload(err));
     } finally {
       setUploadingFile(false);
     }
@@ -198,16 +219,12 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
 
       await apiClient.post(`/vendors/${params.id}/extract`);
 
-      // Refresh vendor data to show new extraction job
+      // Refresh vendor data to show new extraction job (skip cache)
       // Don't set extracting to false - let polling handle it
-      await fetchVendorDetail();
+      apiCache.delete(CacheKeys.vendors.detail(params.id, jobsPage));
+      await fetchVendorDetail(undefined, true);
     } catch (err) {
-      const errorMessage = axios.isAxiosError(err)
-        ? err.response?.data?.message || 'Failed to trigger extraction'
-        : err instanceof Error
-        ? err.message
-        : 'Unknown error occurred';
-      setExtractError(errorMessage);
+      setExtractError(ErrorMessages.extraction.trigger(err));
       setExtracting(false); // Only set to false on error
     }
   };
@@ -233,6 +250,20 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       setSources(null);
     } finally {
       setLoadingSources(false);
+    }
+  };
+
+  const handleDeleteVendor = async () => {
+    try {
+      setDeleting(true);
+      await apiClient.delete(`/vendors/${params.id}`);
+      // Redirect to vendors list after successful deletion
+      router.push('/vendors');
+    } catch (err) {
+      setError(ErrorMessages.vendor.delete(err));
+      setShowDeleteModal(false);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -324,8 +355,18 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
           >
             &larr; Back to Vendors
           </Link>
-          <h1 className="text-3xl font-bold text-gray-900">{vendor.name}</h1>
-          <p className="text-gray-600 mt-1">Vendor Details and Documentation</p>
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">{vendor.name}</h1>
+              <p className="text-gray-600 mt-1">Vendor Details and Documentation</p>
+            </div>
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+            >
+              Delete Vendor
+            </button>
+          </div>
         </div>
 
         {/* Vendor Information Card */}
@@ -751,60 +792,134 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
         {/* Extraction Jobs History */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-xl font-semibold mb-4">Extraction Jobs History</h2>
+          {vendor.extractionJobsMetadata && vendor.extractionJobsMetadata.total > 0 && (
+            <div className="mb-4 text-sm text-gray-600">
+              Showing {vendor.extractionJobs.length} of {vendor.extractionJobsMetadata.total} jobs
+            </div>
+          )}
           {vendor.extractionJobs.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               No extraction jobs yet.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Job ID
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Created At
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Completed At
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {vendor.extractionJobs.map((job) => (
-                    <tr key={job.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-mono text-gray-900">{job.id.slice(0, 8)}...</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getJobStatusColor(
-                            job.status
-                          )}`}
-                        >
-                          {job.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">{formatDate(job.createdAt)}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">
-                          {job.finishedAt ? formatDate(job.finishedAt) : '-'}
-                        </div>
-                      </td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Job ID
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Created At
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Completed At
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {vendor.extractionJobs.map((job) => (
+                      <tr key={job.id}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-mono text-gray-900">{job.id.slice(0, 8)}...</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getJobStatusColor(
+                              job.status
+                            )}`}
+                          >
+                            {job.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">{formatDate(job.createdAt)}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">
+                            {job.finishedAt ? formatDate(job.finishedAt) : '-'}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Pagination Controls */}
+              {vendor.extractionJobsMetadata && vendor.extractionJobsMetadata.totalPages > 1 && (
+                <div className="mt-4 flex items-center justify-between">
+                  <div className="text-sm text-gray-600">
+                    Page {vendor.extractionJobsMetadata.page} of {vendor.extractionJobsMetadata.totalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        const newPage = jobsPage - 1;
+                        setJobsPage(newPage);
+                        fetchVendorDetail(newPage);
+                      }}
+                      disabled={jobsPage === 1}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newPage = jobsPage + 1;
+                        setJobsPage(newPage);
+                        fetchVendorDetail(newPage);
+                      }}
+                      disabled={jobsPage === vendor.extractionJobsMetadata.totalPages}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h2 className="text-2xl font-bold mb-4 text-red-600">Delete Vendor</h2>
+            <p className="mb-4 text-gray-700">
+              Are you sure you want to delete <strong>{vendor.name}</strong>?
+            </p>
+            <p className="mb-6 text-sm text-gray-600">
+              This action cannot be undone. All documents, extracted facts, and extraction jobs associated with this vendor will be permanently deleted.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteVendor}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
+              >
+                {deleting && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                )}
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

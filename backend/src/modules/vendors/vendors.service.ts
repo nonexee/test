@@ -80,8 +80,12 @@ export class VendorsService {
     }));
   }
 
-  async findOne(id: string, tenantId: string) {
+  async findOne(id: string, tenantId: string, options?: { jobsPage?: number; jobsLimit?: number }) {
     // Use findFirst with compound WHERE for tenant isolation at query level
+    const jobsPage = options?.jobsPage ?? 1;
+    const jobsLimit = options?.jobsLimit ?? 10;
+    const jobsSkip = (jobsPage - 1) * jobsLimit;
+
     const vendor = await this.prisma.vendor.findFirst({
       where: {
         id,
@@ -98,7 +102,8 @@ export class VendorsService {
           orderBy: {
             createdAt: 'desc',
           },
-          take: 5,
+          skip: jobsSkip,
+          take: jobsLimit,
         },
       },
     });
@@ -107,7 +112,23 @@ export class VendorsService {
       throw new NotFoundException(ErrorMessages.VENDOR.NOT_FOUND);
     }
 
-    return vendor;
+    // Get total count of extraction jobs for pagination
+    const totalJobs = await this.prisma.extractionJob.count({
+      where: {
+        vendorId: id,
+        tenantId,
+      },
+    });
+
+    return {
+      ...vendor,
+      extractionJobsMetadata: {
+        total: totalJobs,
+        page: jobsPage,
+        limit: jobsLimit,
+        totalPages: Math.ceil(totalJobs / jobsLimit),
+      },
+    };
   }
 
   async create(tenantId: string, dto: CreateVendorDto, userId?: string) {

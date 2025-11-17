@@ -70,12 +70,22 @@ export class VendorsController {
   @Throttle({ default: { limit: 100, ttl: 60000 } }) // 100 requests per minute
   @ApiOperation({ summary: 'Get vendor by ID', description: 'Returns a single vendor with all related data' })
   @ApiParam({ name: 'id', type: String, description: 'Vendor UUID' })
+  @ApiQuery({ name: 'jobsPage', required: false, type: Number, description: 'Extraction jobs page number (default: 1)' })
+  @ApiQuery({ name: 'jobsLimit', required: false, type: Number, description: 'Extraction jobs per page (default: 10)' })
   @ApiResponse({ status: 200, description: 'Vendor details' })
   @ApiResponse({ status: 404, description: 'Vendor not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
-  async findOne(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return this.vendorsService.findOne(id, user.tenantId);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+    @Query('jobsPage') jobsPage?: string,
+    @Query('jobsLimit') jobsLimit?: string,
+  ) {
+    return this.vendorsService.findOne(id, user.tenantId, {
+      jobsPage: jobsPage ? parseInt(jobsPage, 10) : undefined,
+      jobsLimit: jobsLimit ? parseInt(jobsLimit, 10) : undefined,
+    });
   }
 
   @Post()

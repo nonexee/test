@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import apiClient from '@/lib/api';
+import { ErrorMessages } from '@/lib/utils/errors';
+import { apiCache, CacheKeys } from '@/lib/utils/cache';
 
 interface Vendor {
   id: string;
@@ -66,9 +68,28 @@ export default function VendorsPage() {
     return 0;
   });
 
-  const fetchVendors = useCallback(async () => {
+  const fetchVendors = useCallback(async (skipCache = false) => {
     try {
       setLoading(true);
+
+      // Generate cache key
+      const cacheKey = CacheKeys.vendors.list({
+        type: typeFilter,
+        criticality: criticalityFilter,
+        search: searchQuery,
+      });
+
+      // Try to get from cache first (unless skipCache is true)
+      if (!skipCache) {
+        const cachedData = apiCache.get<Vendor[]>(cacheKey);
+        if (cachedData) {
+          setVendors(cachedData);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Fetch from API
       const params = new URLSearchParams();
       if (typeFilter) params.append('type', typeFilter);
       if (criticalityFilter) params.append('criticality', criticalityFilter);
@@ -77,8 +98,11 @@ export default function VendorsPage() {
       const response = await apiClient.get(`/vendors?${params.toString()}`);
       setVendors(response.data);
       setError('');
+
+      // Store in cache (5 minutes TTL)
+      apiCache.set(cacheKey, response.data, 5 * 60 * 1000);
     } catch (err) {
-      setError('Failed to fetch vendors');
+      setError(ErrorMessages.vendor.list(err));
     } finally {
       setLoading(false);
     }
@@ -309,9 +333,19 @@ export default function VendorsPage() {
       {showCreateModal && (
         <CreateVendorModal
           onClose={() => setShowCreateModal(false)}
-          onSuccess={() => {
-            setShowCreateModal(false);
-            fetchVendors();
+          onOptimisticCreate={(vendor) => {
+            // Add optimistic vendor to list immediately
+            setVendors((prev) => [vendor, ...prev]);
+            // Clear cache since we're adding a new vendor
+            apiCache.clearPattern('vendors:list');
+          }}
+          onSuccess={(realVendor) => {
+            // Replace optimistic vendor with real one
+            setVendors((prev) =>
+              prev.map((v) => (v.id.startsWith('temp-') ? realVendor : v))
+            );
+            // Clear cache to ensure fresh data on next fetch
+            apiCache.clearPattern('vendors:list');
           }}
         />
       )}
@@ -322,9 +356,11 @@ export default function VendorsPage() {
 function CreateVendorModal({
   onClose,
   onSuccess,
+  onOptimisticCreate,
 }: {
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (vendor: Vendor) => void;
+  onOptimisticCreate: (vendor: Vendor) => void;
 }) {
   const [name, setName] = useState('');
   const [type, setType] = useState('SAAS');
@@ -337,11 +373,29 @@ function CreateVendorModal({
     setLoading(true);
     setError('');
 
+    // Create optimistic vendor (temporary ID until real one arrives)
+    const optimisticVendor: Vendor = {
+      id: `temp-${Date.now()}`,
+      name,
+      type,
+      criticality,
+      status: 'DRAFT',
+      hasFacts: false,
+      documentCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Add optimistically to the list
+    onOptimisticCreate(optimisticVendor);
+    onClose();
+
     try {
-      await apiClient.post('/vendors', { name, type, criticality });
-      onSuccess();
+      const response = await apiClient.post('/vendors', { name, type, criticality });
+      // Replace optimistic vendor with real one from API
+      onSuccess(response.data);
     } catch (err) {
-      setError('Failed to create vendor');
+      setError(ErrorMessages.vendor.create(err));
+      // On error, the parent will handle removing the optimistic vendor
     } finally {
       setLoading(false);
     }

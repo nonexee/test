@@ -27,6 +27,44 @@ export default function VendorsPage() {
   const [criticalityFilter, setCriticalityFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [sortBy, setSortBy] = useState<keyof Vendor>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Handle column sorting (LOW #42 fix)
+  const handleSort = (column: keyof Vendor) => {
+    if (sortBy === column) {
+      // Toggle sort order if clicking same column
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Default to ascending for new column
+      setSortBy(column);
+      setSortOrder('asc');
+    }
+  };
+
+  // Sort vendors based on current sort settings
+  const sortedVendors = [...vendors].sort((a, b) => {
+    const aValue = a[sortBy];
+    const bValue = b[sortBy];
+
+    // Handle different types
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      const comparison = aValue.localeCompare(bValue);
+      return sortOrder === 'asc' ? comparison : -comparison;
+    }
+
+    if (typeof aValue === 'number' && typeof bValue === 'number') {
+      return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+    }
+
+    if (typeof aValue === 'boolean' && typeof bValue === 'boolean') {
+      return sortOrder === 'asc'
+        ? (aValue === bValue ? 0 : aValue ? 1 : -1)
+        : (aValue === bValue ? 0 : aValue ? -1 : 1);
+    }
+
+    return 0;
+  });
 
   const fetchVendors = useCallback(async () => {
     try {
@@ -143,28 +181,76 @@ export default function VendorsPage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
+                  <th
+                    onClick={() => handleSort('name')}
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  >
+                    <div className="flex items-center gap-1">
+                      Name
+                      {sortBy === 'name' && (
+                        <span>{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Type
+                  <th
+                    onClick={() => handleSort('type')}
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  >
+                    <div className="flex items-center gap-1">
+                      Type
+                      {sortBy === 'type' && (
+                        <span>{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Criticality
+                  <th
+                    onClick={() => handleSort('criticality')}
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  >
+                    <div className="flex items-center gap-1">
+                      Criticality
+                      {sortBy === 'criticality' && (
+                        <span>{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
+                  <th
+                    onClick={() => handleSort('status')}
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  >
+                    <div className="flex items-center gap-1">
+                      Status
+                      {sortBy === 'status' && (
+                        <span>{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Documents
+                  <th
+                    onClick={() => handleSort('documentCount')}
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  >
+                    <div className="flex items-center gap-1">
+                      Documents
+                      {sortBy === 'documentCount' && (
+                        <span>{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Facts
+                  <th
+                    onClick={() => handleSort('hasFacts')}
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  >
+                    <div className="flex items-center gap-1">
+                      Facts
+                      {sortBy === 'hasFacts' && (
+                        <span>{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </div>
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {vendors.map((vendor) => (
+                {sortedVendors.map((vendor) => (
                   <tr
                     key={vendor.id}
                     onClick={() => router.push(`/vendors/${vendor.id}`)}
@@ -331,8 +417,11 @@ function CreateVendorModal({
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
             >
+              {loading && (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              )}
               {loading ? 'Creating...' : 'Create Vendor'}
             </button>
           </div>

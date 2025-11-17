@@ -250,6 +250,7 @@ export default function DoraRegisterPage() {
                     </div>
                     <Link
                       href={`/vendors/${vendor.id}`}
+                      prefetch={true}
                       className="text-blue-600 hover:underline text-sm"
                     >
                       View Details →

@@ -79,6 +79,8 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
   const [jobsPage, setJobsPage] = useState(1);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingDocument, setDeletingDocument] = useState<string | null>(null); // FIX GAP #9
+  const [showEditModal, setShowEditModal] = useState(false); // FIX GAP #4
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -267,6 +269,32 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
     }
   };
 
+  /**
+   * FIX GAP #9: Delete document functionality
+   */
+  const handleDeleteDocument = async (documentId: string) => {
+    try {
+      setDeletingDocument(documentId);
+      await apiClient.delete(`/vendors/${params.id}/documents/${documentId}`);
+
+      // Update vendor state to remove deleted document
+      setVendor((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          documents: prev.documents.filter((doc) => doc.id !== documentId),
+        };
+      });
+
+      // Clear any errors
+      setError('');
+    } catch (err) {
+      setError(ErrorMessages.document.delete(err));
+    } finally {
+      setDeletingDocument(null);
+    }
+  };
+
   const getCriticalityColor = (criticality: string) => {
     switch (criticality) {
       case 'HIGH':
@@ -360,12 +388,20 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
               <h1 className="text-3xl font-bold text-gray-900">{vendor.name}</h1>
               <p className="text-gray-600 mt-1">Vendor Details and Documentation</p>
             </div>
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-            >
-              Delete Vendor
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Edit Vendor
+              </button>
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+              >
+                Delete Vendor
+              </button>
+            </div>
           </div>
         </div>
 
@@ -480,6 +516,9 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Uploaded At
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -493,6 +532,15 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-500">{formatDate(doc.uploadedAt)}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <button
+                          onClick={() => handleDeleteDocument(doc.id)}
+                          disabled={deletingDocument === doc.id}
+                          className="text-red-600 hover:text-red-900 text-sm font-medium disabled:text-gray-400"
+                        >
+                          {deletingDocument === doc.id ? 'Deleting...' : 'Delete'}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -932,6 +980,158 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
           </div>
         </div>
       )}
+
+      {/* Edit Vendor Modal - FIX GAP #4 */}
+      {showEditModal && vendor && (
+        <UpdateVendorModal
+          vendor={vendor}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={(updatedVendor) => {
+            setVendor({ ...vendor, ...updatedVendor });
+            setShowEditModal(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * FIX GAP #4: Update Vendor Modal Component
+ */
+function UpdateVendorModal({
+  vendor,
+  onClose,
+  onSuccess,
+}: {
+  vendor: VendorDetail;
+  onClose: () => void;
+  onSuccess: (updatedVendor: Partial<VendorDetail>) => void;
+}) {
+  const [name, setName] = useState(vendor.name);
+  const [type, setType] = useState(vendor.type);
+  const [criticality, setCriticality] = useState(vendor.criticality);
+  const [status, setStatus] = useState(vendor.status);
+  const [updating, setUpdating] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUpdating(true);
+    setError('');
+
+    try {
+      const response = await apiClient.patch(`/vendors/${vendor.id}`, {
+        name,
+        type,
+        criticality,
+        status,
+      });
+
+      onSuccess(response.data);
+    } catch (err) {
+      setError(ErrorMessages.vendor.update(err));
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg p-6 max-w-md w-full">
+        <h2 className="text-2xl font-bold mb-4">Edit Vendor</h2>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded text-sm">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Vendor Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              minLength={2}
+              maxLength={255}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Type
+            </label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="SAAS">SaaS</option>
+              <option value="CLOUD_INFRA">Cloud Infrastructure</option>
+              <option value="CONSULTING">Consulting</option>
+              <option value="AI_SERVICE">AI Service</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Criticality
+            </label>
+            <select
+              value={criticality}
+              onChange={(e) => setCriticality(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="LOW">Low</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Status
+            </label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="DRAFT">Draft</option>
+              <option value="IN_REVIEW">In Review</option>
+              <option value="APPROVED">Approved</option>
+            </select>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={updating}
+              className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 disabled:bg-gray-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={updating}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
+            >
+              {updating && (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              )}
+              {updating ? 'Updating...' : 'Update Vendor'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

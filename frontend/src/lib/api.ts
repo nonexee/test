@@ -13,22 +13,26 @@ if (!apiUrl && typeof window !== 'undefined') {
   console.warn('⚠️  WARNING: NEXT_PUBLIC_API_URL not set. Using default http://localhost:3001');
 }
 
+/**
+ * FIXED GAP #1: Authentication with httpOnly cookies
+ *
+ * - Added withCredentials: true to send/receive cookies
+ * - Removed Authorization header logic (tokens in httpOnly cookies)
+ * - Backend sets cookies via Set-Cookie header
+ * - Axios automatically includes cookies in subsequent requests
+ */
 const apiClient = axios.create({
   baseURL: apiUrl || 'http://localhost:3001',
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // CRITICAL: Send cookies with every request
 });
 
-// Request interceptor to add auth token and track requests (LOW #48 fix)
+// Request interceptor to track requests (LOW #48 fix)
 apiClient.interceptors.request.use(
   (config) => {
     if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('token');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-
       // Track API request timing
       (config as any).metadata = { startTime: Date.now() };
     }

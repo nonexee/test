@@ -13,6 +13,8 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
   BadRequestException,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
@@ -116,15 +118,17 @@ export class VendorsController {
   }
 
   @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT) // FIX GAP #5: Return 204 No Content for DELETE
   @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 requests per minute (destructive operation)
   @ApiOperation({ summary: 'Delete vendor', description: 'Permanently deletes a vendor and all related data' })
   @ApiParam({ name: 'id', type: String, description: 'Vendor UUID' })
-  @ApiResponse({ status: 200, description: 'Vendor deleted successfully' })
+  @ApiResponse({ status: 204, description: 'Vendor deleted successfully (no content)' })
   @ApiResponse({ status: 404, description: 'Vendor not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async delete(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return this.vendorsService.delete(id, user.tenantId, user.userId);
+    await this.vendorsService.delete(id, user.tenantId, user.userId);
+    // No return for 204 No Content
   }
 
   @Post(':id/documents')
@@ -177,6 +181,25 @@ export class VendorsController {
     @CurrentUser() user: CurrentUserData,
   ) {
     return this.vendorsService.triggerExtraction(id, user.tenantId, user.userId);
+  }
+
+  @Delete(':vendorId/documents/:documentId')
+  @HttpCode(HttpStatus.NO_CONTENT) // FIX GAP #3: Document deletion endpoint
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // 20 deletions per minute
+  @ApiOperation({ summary: 'Delete document', description: 'Delete a vendor document permanently' })
+  @ApiParam({ name: 'vendorId', type: String, description: 'Vendor UUID' })
+  @ApiParam({ name: 'documentId', type: String, description: 'Document UUID' })
+  @ApiResponse({ status: 204, description: 'Document deleted successfully (no content)' })
+  @ApiResponse({ status: 404, description: 'Document or vendor not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
+  async deleteDocument(
+    @Param('vendorId') vendorId: string,
+    @Param('documentId') documentId: string,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    await this.vendorsService.deleteDocument(documentId, vendorId, user.tenantId, user.userId);
+    // No return for 204 No Content
   }
 
   @Get(':id/sources')

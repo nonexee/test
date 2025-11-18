@@ -198,7 +198,7 @@ export class VendorsService {
     return this.findOne(id, tenantId);
   }
 
-  async delete(id: string, tenantId: string, userId?: string) {
+  async delete(id: string, tenantId: string, userId?: string): Promise<void> {
     // Get vendor before deletion for audit trail
     const vendor = await this.findOne(id, tenantId);
 
@@ -232,7 +232,7 @@ export class VendorsService {
       },
     });
 
-    return { message: 'Vendor deleted successfully' };
+    // FIX GAP #5: Return void for 204 No Content
   }
 
   async uploadDocument(
@@ -309,6 +309,66 @@ export class VendorsService {
     }
 
     return document;
+  }
+
+  /**
+   * FIX GAP #3: Delete document endpoint
+   * Delete a document with proper tenant isolation
+   */
+  async deleteDocument(
+    documentId: string,
+    vendorId: string,
+    tenantId: string,
+    userId?: string,
+  ): Promise<void> {
+    // First verify vendor exists and belongs to tenant
+    const vendor = await this.findOne(vendorId, tenantId);
+
+    // Find the document with compound WHERE for tenant isolation
+    const document = await this.prisma.vendorDocument.findFirst({
+      where: {
+        id: documentId,
+        vendorId,
+        vendor: {
+          tenantId, // Ensures tenant isolation
+        },
+      },
+    });
+
+    if (!document) {
+      throw new NotFoundException(ErrorMessages.DOCUMENT.NOT_FOUND_OR_ACCESS_DENIED);
+    }
+
+    // Delete document from database
+    // Cascading is not needed as documents don't have child relations
+    await this.prisma.vendorDocument.delete({
+      where: { id: documentId },
+    });
+
+    // TODO: Delete file from Gemini File Search when API available
+    // await this.geminiService.deleteFileFromStore(
+    //   tenant.geminiFileSearchStoreName,
+    //   document.geminiFileNameOrId
+    // );
+
+    this.logger.log(
+      `Document deleted: ${documentId} (${document.fileName}) from vendor ${vendorId}`,
+    );
+
+    // Audit log
+    await this.auditService.log({
+      tenantId,
+      userId,
+      action: 'DELETE_DOCUMENT',
+      resource: 'DOCUMENT',
+      resourceId: documentId,
+      metadata: {
+        vendorId,
+        vendorName: vendor.name,
+        fileName: document.fileName,
+        fileType: document.fileType,
+      },
+    });
   }
 
   /**

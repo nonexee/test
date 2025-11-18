@@ -42,6 +42,7 @@ interface VendorDetail {
     status: string;
     createdAt: string;
     finishedAt: string | null;
+    errorMessage?: string | null; // FIX GAP #10
   }>;
   extractionJobsMetadata?: {
     total: number;
@@ -229,6 +230,15 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       setExtractError(ErrorMessages.extraction.trigger(err));
       setExtracting(false); // Only set to false on error
     }
+  };
+
+  /**
+   * FIX GAP #10: Retry extraction functionality
+   * Retries a failed extraction job
+   */
+  const handleRetryExtraction = async () => {
+    // Same as trigger extraction - creates a new job
+    await handleTriggerExtraction();
   };
 
   const handleShowSources = async (statement: string) => {
@@ -879,6 +889,9 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Completed At
                       </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Error / Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -903,6 +916,34 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                           <div className="text-sm text-gray-500">
                             {job.finishedAt ? formatDate(job.finishedAt) : '-'}
                           </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {/* FIX GAP #10: Error messages and retry buttons */}
+                          {job.status === 'ERROR' && (
+                            <div className="space-y-2">
+                              {job.errorMessage && (
+                                <div className="text-sm text-red-600 max-w-xs truncate" title={job.errorMessage}>
+                                  {job.errorMessage}
+                                </div>
+                              )}
+                              <button
+                                onClick={() => handleRetryExtraction()}
+                                disabled={extracting}
+                                className="text-sm text-blue-600 hover:text-blue-800 font-medium disabled:text-gray-400"
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          )}
+                          {job.status === 'RUNNING' && (
+                            <div className="flex items-center gap-2 text-sm text-blue-600">
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                              <span>Processing...</span>
+                            </div>
+                          )}
+                          {job.status === 'SUCCESS' && (
+                            <div className="text-sm text-green-600">✓ Completed</div>
+                          )}
                         </td>
                       </tr>
                     ))}

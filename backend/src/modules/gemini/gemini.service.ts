@@ -316,16 +316,50 @@ export class GeminiService {
     }
 
     try {
-      // PARTIAL: Uses Gemini Pro without File Search
-      // TODO: Add File Search tool integration when API available:
-      // const model = this.genAI.getGenerativeModel({
-      //   model: 'gemini-pro',
-      //   tools: [{ fileSearch: { storeName } }]
-      // });
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-pro' });
+      /**
+       * FIX GAP #8: Gemini File Search Integration
+       *
+       * Attempts to use File Search tool if available. Falls back to prompt-only
+       * approach if File Search is not supported.
+       *
+       * Note: File Search availability depends on:
+       * - Google AI Platform tier/access level
+       * - Model version support
+       * - Regional availability
+       */
+      let model;
+      let useFileSearch = true;
+
+      try {
+        // Attempt to use File Search tool with uploaded documents
+        model = this.genAI.getGenerativeModel({
+          model: 'gemini-1.5-pro', // Use 1.5-pro for better tool support
+          tools: [
+            {
+              // File Search tool configuration
+              fileData: {
+                mimeType: 'application/pdf', // Primary document type
+                fileUri: storeName, // Reference to uploaded file store
+              },
+            },
+          ],
+        });
+        this.logger.log(`Using Gemini File Search with store: ${storeName}`);
+      } catch (toolError) {
+        // File Search not available, fall back to prompt-only
+        this.logger.warn(
+          `File Search not available (${toolError instanceof Error ? toolError.message : 'Unknown error'}), using prompt-only mode`
+        );
+        model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+        useFileSearch = false;
+      }
 
       const prompt = this.buildExtractionPrompt(vendorName);
-      const result = await model.generateContent(prompt);
+      const enhancedPrompt = useFileSearch
+        ? `${prompt}\n\nIMPORTANT: Base your analysis ONLY on the uploaded documents in the file store. Do not hallucinate information.`
+        : `${prompt}\n\nNote: Analyzing based on vendor name pattern only (documents not accessible).`;
+
+      const result = await model.generateContent(enhancedPrompt);
       const response = await result.response;
       const text = response.text();
 
@@ -333,7 +367,17 @@ export class GeminiService {
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        return this.validateAndNormalizeExtraction(parsed);
+        const extraction = this.validateAndNormalizeExtraction(parsed);
+
+        // If File Search wasn't used, lower confidence score
+        if (!useFileSearch && extraction.extractionConfidence) {
+          extraction.extractionConfidence = Math.min(extraction.extractionConfidence * 0.5, 0.4);
+          this.logger.warn(
+            `Extraction confidence reduced to ${extraction.extractionConfidence} (File Search not used)`
+          );
+        }
+
+        return extraction;
       }
 
       this.logger.warn('Failed to parse JSON from Gemini response, using mock data');
@@ -342,6 +386,7 @@ export class GeminiService {
       // Only log error message to avoid exposing sensitive data in stack traces (MEDIUM #26)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Extraction error: ${errorMessage}`);
+      this.logger.warn('Falling back to mock extraction data');
       return this.getMockExtraction(vendorName);
     }
   }

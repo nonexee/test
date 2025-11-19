@@ -124,11 +124,12 @@ if (typeof window !== 'undefined') {
  */
 export const CacheKeys = {
   vendors: {
-    list: (filters?: { type?: string; criticality?: string; search?: string }) => {
+    list: (filters?: { type?: string; criticality?: string; search?: string; page?: string }) => {
       const params = new URLSearchParams();
       if (filters?.type) params.append('type', filters.type);
       if (filters?.criticality) params.append('criticality', filters.criticality);
       if (filters?.search) params.append('search', filters.search);
+      if (filters?.page) params.append('page', filters.page);
       return `vendors:list:${params.toString()}`;
     },
     detail: (id: string, jobsPage?: number) =>

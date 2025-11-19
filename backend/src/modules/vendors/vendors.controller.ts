@@ -47,12 +47,14 @@ export class VendorsController {
 
   @Get()
   @Throttle({ default: { limit: 100, ttl: 60000 } }) // 100 requests per minute
-  @ApiOperation({ summary: 'Get all vendors', description: 'Returns all vendors for the authenticated user\'s tenant with optional filtering' })
+  @ApiOperation({ summary: 'Get all vendors', description: 'Returns paginated vendors for the authenticated user\'s tenant with optional filtering' })
   @ApiQuery({ name: 'type', required: false, enum: VendorType, description: 'Filter by vendor type' })
   @ApiQuery({ name: 'criticality', required: false, enum: VendorCriticality, description: 'Filter by criticality level' })
   @ApiQuery({ name: 'search', required: false, type: String, description: 'Search vendors by name' })
   @ApiQuery({ name: 'includeFacts', required: false, type: String, description: 'Include extracted facts (true/false)' })
-  @ApiResponse({ status: 200, description: 'List of vendors' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 50, max: 100)' })
+  @ApiResponse({ status: 200, description: 'Paginated list of vendors with metadata' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async findAll(
@@ -61,12 +63,16 @@ export class VendorsController {
     @Query('criticality') criticality?: VendorCriticality,
     @Query('search') search?: string,
     @Query('includeFacts') includeFacts?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.vendorsService.findAll(user.tenantId, {
       type,
       criticality,
       search,
       includeFacts: includeFacts === 'true',
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
     });
   }
 

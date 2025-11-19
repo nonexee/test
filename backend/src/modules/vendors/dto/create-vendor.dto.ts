@@ -10,7 +10,16 @@ export class CreateVendorDto {
     minLength: 2,
     maxLength: 255,
   })
-  @Transform(({ value }) => value?.trim())
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    // Trim whitespace
+    let sanitized = value.trim();
+    // Remove HTML tags
+    sanitized = sanitized.replace(/<[^>]*>/g, '');
+    // Remove potentially dangerous characters
+    sanitized = sanitized.replace(/[<>]/g, '');
+    return sanitized;
+  })
   @IsString()
   @MinLength(2)
   @MaxLength(255)

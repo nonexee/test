@@ -8,7 +8,14 @@ export class RegisterTenantDto {
     example: 'Acme Corporation',
     minLength: 2,
   })
-  @Transform(({ value }) => value?.trim())
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    let sanitized = value.trim();
+    // Remove HTML tags and dangerous characters
+    sanitized = sanitized.replace(/<[^>]*>/g, '');
+    sanitized = sanitized.replace(/[<>]/g, '');
+    return sanitized;
+  })
   @IsString()
   @MinLength(2)
   tenantName: string;
@@ -18,7 +25,13 @@ export class RegisterTenantDto {
     example: 'admin@acme.com',
     format: 'email',
   })
-  @Transform(({ value }) => value?.trim().toLowerCase())
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    let sanitized = value.trim().toLowerCase();
+    // Remove HTML tags (email validation will catch invalid formats)
+    sanitized = sanitized.replace(/<[^>]*>/g, '');
+    return sanitized;
+  })
   @IsEmail()
   adminEmail: string;
 

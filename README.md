@@ -198,12 +198,40 @@ Access the application:
 - **Password Security**: Bcrypt with 12 rounds, complexity validation, strength indicator
 - **Multi-Tenancy**: Complete data isolation at database level
 - **RBAC**: Role-based access control (ADMIN/VIEWER)
-- **Rate Limiting**: 100 req/min global, endpoint-specific limits
+- **Rate Limiting**: 100 req/min global, endpoint-specific limits (see API Rate Limits below)
 - **Attack Prevention**: Timing attack prevention, race condition handling, magic byte validation
-- **Security Headers**: Helmet middleware with XSS protection, HSTS, CSP
-- **Input Validation**: Class-validator DTOs on all endpoints
-- **CORS**: Restricted to frontend origin
+- **Security Headers**: Helmet middleware with XSS protection, HSTS, Content Security Policy
+- **Input Validation**: Class-validator DTOs with HTML sanitization on all endpoints
+- **CORS**: Multi-environment support with strict origin validation
 - **Audit Logging**: All mutations tracked for compliance
+
+#### API Rate Limits
+
+| Endpoint | Limit | Window | Notes |
+|----------|-------|--------|-------|
+| **Global** | 100 requests | 1 minute | Applies to all endpoints |
+| `POST /auth/login` | 5 requests | 1 minute | Prevents brute force attacks |
+| `POST /auth/register` | 3 requests | 1 minute | Prevents spam registrations |
+| `GET /vendors` | 100 requests | 1 minute | Paginated, max 100 items/page |
+| `POST /vendors` | 20 requests | 1 minute | Admin only |
+| `PATCH /vendors/:id` | 50 requests | 1 minute | Admin only |
+| `DELETE /vendors/:id` | 10 requests | 1 minute | Admin only, destructive |
+| `POST /vendors/:id/documents` | 10 uploads | 1 minute | Max 10MB per file |
+| `POST /vendors/:id/extract` | 5 requests | 1 minute | AI extraction trigger |
+| `GET /vendors/:id/sources` | 30 requests | 1 minute | AI source retrieval |
+
+**Response Headers:**
+- `X-RateLimit-Limit`: Maximum requests allowed
+- `X-RateLimit-Remaining`: Remaining requests
+- `X-RateLimit-Reset`: Time when limit resets (Unix timestamp)
+
+**Rate Limit Exceeded Response:**
+```json
+{
+  "statusCode": 429,
+  "message": "ThrottlerException: Too Many Requests"
+}
+```
 
 ### ♿ Accessibility (WCAG 2.1 Level AA)
 
@@ -417,16 +445,46 @@ pm2 start npm --name "vendorflow-worker" -- run worker:extraction
 
 ### Production Security Checklist
 
+**Authentication & Authorization:**
 - [ ] JWT_SECRET is 64+ characters and randomly generated
+- [ ] Access tokens expire in 15 minutes or less
+- [ ] Refresh tokens expire in 7 days
+- [ ] httpOnly cookies enabled for token storage
+- [ ] RBAC properly configured with ADMIN/VIEWER roles
+- [ ] Session validation on every protected route
+
+**Network & Infrastructure:**
 - [ ] Database uses SSL (`sslmode=require`)
 - [ ] Redis requires password authentication
-- [ ] CORS restricted to production domain only
-- [ ] HTTPS enforced for all traffic
-- [ ] Rate limiting enabled
-- [ ] Helmet middleware configured
+- [ ] CORS configured for all production domains (`FRONTEND_URL`, `FRONTEND_URL_STAGING`)
+- [ ] HTTPS enforced for all traffic (HSTS enabled)
+- [ ] Reverse proxy configured (Nginx/Cloudflare)
+- [ ] SSL certificates valid and auto-renewing
+
+**Application Security:**
+- [ ] Rate limiting enabled on all endpoints
+- [ ] Helmet middleware with CSP configured
+- [ ] Input sanitization on all DTOs (HTML tags stripped)
+- [ ] File upload limits enforced (10MB max)
+- [ ] Magic byte validation for uploaded files
+- [ ] XSS protection headers enabled
+- [ ] SQL injection prevention (Prisma parameterized queries)
+
+**Data & Privacy:**
 - [ ] Environment variables secured (never committed)
-- [ ] File upload limits enforced (10MB)
+- [ ] Audit logging enabled for all mutations
+- [ ] Multi-tenant data isolation verified
+- [ ] Sensitive data encrypted at rest
+- [ ] Regular database backups configured
+- [ ] GDPR compliance verified
+
+**Monitoring & Maintenance:**
+- [ ] Error tracking configured (Sentry recommended)
+- [ ] Application monitoring enabled
+- [ ] Log aggregation configured
+- [ ] Uptime monitoring active
 - [ ] Regular security updates applied
+- [ ] Dependency vulnerability scanning enabled
 
 ## 📊 Monitoring & Observability
 

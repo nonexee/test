@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
@@ -19,10 +19,29 @@ interface Vendor {
   createdAt: string;
 }
 
+interface VendorsResponse {
+  vendors: Vendor[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
+}
+
 export default function VendorsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    limit: 50,
+    totalPages: 0,
+    hasMore: false,
+  });
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -68,22 +87,24 @@ export default function VendorsPage() {
     return 0;
   });
 
-  const fetchVendors = useCallback(async (skipCache = false) => {
+  const fetchVendors = useCallback(async (page = 1, skipCache = false) => {
     try {
       setLoading(true);
 
-      // Generate cache key
+      // Generate cache key including page number
       const cacheKey = CacheKeys.vendors.list({
         type: typeFilter,
         criticality: criticalityFilter,
         search: searchQuery,
+        page: page.toString(),
       });
 
       // Try to get from cache first (unless skipCache is true)
       if (!skipCache) {
-        const cachedData = apiCache.get<Vendor[]>(cacheKey);
+        const cachedData = apiCache.get<VendorsResponse>(cacheKey);
         if (cachedData) {
-          setVendors(cachedData);
+          setVendors(cachedData.vendors);
+          setPagination(cachedData.pagination);
           setLoading(false);
           return;
         }
@@ -94,13 +115,18 @@ export default function VendorsPage() {
       if (typeFilter) params.append('type', typeFilter);
       if (criticalityFilter) params.append('criticality', criticalityFilter);
       if (searchQuery) params.append('search', searchQuery);
+      params.append('page', page.toString());
+      params.append('limit', '50');
 
       const response = await apiClient.get(`/vendors?${params.toString()}`);
-      setVendors(response.data);
+      const data: VendorsResponse = response.data;
+
+      setVendors(data.vendors);
+      setPagination(data.pagination);
       setError('');
 
       // Store in cache (5 minutes TTL)
-      apiCache.set(cacheKey, response.data, 5 * 60 * 1000);
+      apiCache.set(cacheKey, data, 5 * 60 * 1000);
     } catch (err) {
       setError(ErrorMessages.vendor.list(err));
     } finally {
@@ -115,9 +141,19 @@ export default function VendorsPage() {
     }
 
     if (user) {
-      fetchVendors();
+      fetchVendors(currentPage);
     }
-  }, [user, authLoading, fetchVendors, router]);
+  }, [user, authLoading, fetchVendors, currentPage, router]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [typeFilter, criticalityFilter, searchQuery]);
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   if (authLoading || !user) {
     return (
@@ -278,57 +314,110 @@ export default function VendorsPage() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {sortedVendors.map((vendor) => (
-                  <tr
+                  <VendorRow
                     key={vendor.id}
-                    onClick={() => router.push(`/vendors/${vendor.id}`)}
-                    className="hover:bg-gray-50 cursor-pointer"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{vendor.name}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-500">{vendor.type.replace(/_/g, ' ')}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          vendor.criticality === 'HIGH'
-                            ? 'bg-red-100 text-red-800'
-                            : vendor.criticality === 'MEDIUM'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}
-                      >
-                        {vendor.criticality}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          vendor.status === 'APPROVED'
-                            ? 'bg-green-100 text-green-800'
-                            : vendor.status === 'IN_REVIEW'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {vendor.status.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {vendor.documentCount}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {vendor.hasFacts ? (
-                        <span className="text-green-600">✓ Extracted</span>
-                      ) : (
-                        <span className="text-gray-400">Not extracted</span>
-                      )}
-                    </td>
-                  </tr>
+                    vendor={vendor}
+                    onClick={(id) => router.push(`/vendors/${id}`)}
+                  />
                 ))}
               </tbody>
             </table>
+
+            {/* Pagination Controls */}
+            {pagination.totalPages > 1 && (
+              <div className="bg-gray-50 px-4 py-3 border-t border-gray-200 sm:px-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 flex justify-between sm:hidden">
+                    <button
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={!pagination.hasMore}
+                      className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                  <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm text-gray-700">
+                        Showing{' '}
+                        <span className="font-medium">
+                          {(currentPage - 1) * pagination.limit + 1}
+                        </span>{' '}
+                        to{' '}
+                        <span className="font-medium">
+                          {Math.min(currentPage * pagination.limit, pagination.total)}
+                        </span>{' '}
+                        of <span className="font-medium">{pagination.total}</span> vendors
+                      </p>
+                    </div>
+                    <div>
+                      <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                        <button
+                          onClick={() => handlePageChange(currentPage - 1)}
+                          disabled={currentPage === 1}
+                          className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          aria-label="Previous page"
+                        >
+                          <span className="sr-only">Previous</span>
+                          <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+
+                        {/* Page Numbers */}
+                        {Array.from({ length: Math.min(pagination.totalPages, 7) }, (_, i) => {
+                          let pageNum;
+                          if (pagination.totalPages <= 7) {
+                            pageNum = i + 1;
+                          } else if (currentPage <= 4) {
+                            pageNum = i + 1;
+                          } else if (currentPage >= pagination.totalPages - 3) {
+                            pageNum = pagination.totalPages - 6 + i;
+                          } else {
+                            pageNum = currentPage - 3 + i;
+                          }
+
+                          return (
+                            <button
+                              key={pageNum}
+                              onClick={() => handlePageChange(pageNum)}
+                              className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                                currentPage === pageNum
+                                  ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                                  : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                              }`}
+                              aria-label={`Page ${pageNum}`}
+                              aria-current={currentPage === pageNum ? 'page' : undefined}
+                            >
+                              {pageNum}
+                            </button>
+                          );
+                        })}
+
+                        <button
+                          onClick={() => handlePageChange(currentPage + 1)}
+                          disabled={!pagination.hasMore}
+                          className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          aria-label="Next page"
+                        >
+                          <span className="sr-only">Next</span>
+                          <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      </nav>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -355,6 +444,61 @@ export default function VendorsPage() {
     </div>
   );
 }
+
+// Memoized VendorRow component to prevent unnecessary re-renders
+const VendorRow = memo(({ vendor, onClick }: { vendor: Vendor; onClick: (id: string) => void }) => {
+  return (
+    <tr
+      onClick={() => onClick(vendor.id)}
+      className="hover:bg-gray-50 cursor-pointer"
+    >
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm font-medium text-gray-900">{vendor.name}</div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm text-gray-500">{vendor.type.replace(/_/g, ' ')}</div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <span
+          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+            vendor.criticality === 'HIGH'
+              ? 'bg-red-100 text-red-800'
+              : vendor.criticality === 'MEDIUM'
+              ? 'bg-yellow-100 text-yellow-800'
+              : 'bg-green-100 text-green-800'
+          }`}
+        >
+          {vendor.criticality}
+        </span>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <span
+          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+            vendor.status === 'APPROVED'
+              ? 'bg-green-100 text-green-800'
+              : vendor.status === 'IN_REVIEW'
+              ? 'bg-yellow-100 text-yellow-800'
+              : 'bg-gray-100 text-gray-800'
+          }`}
+        >
+          {vendor.status.replace(/_/g, ' ')}
+        </span>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {vendor.documentCount}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        {vendor.hasFacts ? (
+          <span className="text-green-600">✓ Extracted</span>
+        ) : (
+          <span className="text-gray-400">Not extracted</span>
+        )}
+      </td>
+    </tr>
+  );
+});
+
+VendorRow.displayName = 'VendorRow';
 
 function CreateVendorModal({
   onClose,
@@ -417,11 +561,14 @@ function CreateVendorModal({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="vendor-name" className="block text-sm font-medium text-gray-700 mb-1">
               Vendor Name
             </label>
             <input
+              id="vendor-name"
+              name="vendor-name"
               type="text"
+              autoComplete="organization"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -432,10 +579,12 @@ function CreateVendorModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="vendor-type" className="block text-sm font-medium text-gray-700 mb-1">
               Type
             </label>
             <select
+              id="vendor-type"
+              name="vendor-type"
               value={type}
               onChange={(e) => setType(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -449,10 +598,12 @@ function CreateVendorModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="vendor-criticality" className="block text-sm font-medium text-gray-700 mb-1">
               Criticality
             </label>
             <select
+              id="vendor-criticality"
+              name="vendor-criticality"
               value={criticality}
               onChange={(e) => setCriticality(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"

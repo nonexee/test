@@ -8,7 +8,13 @@ export class LoginDto {
     example: 'admin@acme.com',
     format: 'email',
   })
-  @Transform(({ value }) => value?.trim().toLowerCase())
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    let sanitized = value.trim().toLowerCase();
+    // Remove HTML tags (email validation will catch invalid formats)
+    sanitized = sanitized.replace(/<[^>]*>/g, '');
+    return sanitized;
+  })
   @IsEmail()
   email: string;
 

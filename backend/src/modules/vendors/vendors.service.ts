@@ -27,8 +27,15 @@ export class VendorsService {
       criticality?: VendorCriticality;
       search?: string;
       includeFacts?: boolean;
+      page?: number;
+      limit?: number;
     },
   ) {
+    // Pagination parameters with defaults
+    const page = filters?.page ?? 1;
+    const limit = Math.min(filters?.limit ?? 50, 100); // Max 100 items per page
+    const skip = (page - 1) * limit;
+
     const where: Prisma.VendorWhereInput = { tenantId };
 
     if (filters?.type) {
@@ -46,25 +53,31 @@ export class VendorsService {
       };
     }
 
-    const vendors = await this.prisma.vendor.findMany({
-      where,
-      include: {
-        // Only include full facts when explicitly requested (LOW #40 fix)
-        ...(filters?.includeFacts && { facts: true }),
-        _count: {
-          select: {
-            documents: true,
-            // Count facts to check existence without loading data
-            facts: true,
+    // Execute queries in parallel for better performance
+    const [vendors, total] = await Promise.all([
+      this.prisma.vendor.findMany({
+        where,
+        include: {
+          // Only include full facts when explicitly requested (LOW #40 fix)
+          ...(filters?.includeFacts && { facts: true }),
+          _count: {
+            select: {
+              documents: true,
+              // Count facts to check existence without loading data
+              facts: true,
+            },
           },
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip,
+        take: limit,
+      }),
+      this.prisma.vendor.count({ where }),
+    ]);
 
-    return vendors.map((vendor) => ({
+    const mappedVendors = vendors.map((vendor) => ({
       id: vendor.id,
       name: vendor.name,
       type: vendor.type,
@@ -78,6 +91,17 @@ export class VendorsService {
         ? { facts: vendor.facts }
         : {}),
     }));
+
+    return {
+      vendors: mappedVendors,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasMore: page * limit < total,
+      },
+    };
   }
 
   async findOne(id: string, tenantId: string, options?: { jobsPage?: number; jobsLimit?: number }) {

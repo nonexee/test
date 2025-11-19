@@ -45,6 +45,9 @@ Thumbs.db
 *.swo
 *~
 
+# TypeScript
+*.tsbuildinfo
+
 # Misc
 .turbo
 .cache

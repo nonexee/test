@@ -99,7 +99,7 @@ export interface ExtractionJob {
   updatedAt: string;
   startedAt?: string;
   finishedAt?: string;
-  rawLlmOutput?: any;
+  rawLlmOutput?: Record<string, unknown>;
   errorMessage?: string;
   vendorId: string;
   tenantId: string;

@@ -46,9 +46,15 @@ apiClient.interceptors.request.use(
 
 // Track if we're currently refreshing to prevent multiple refresh calls
 let isRefreshing = false;
-let failedQueue: any[] = [];
 
-const processQueue = (error: any, token = null) => {
+interface QueuedRequest {
+  resolve: (value?: unknown) => void;
+  reject: (reason?: unknown) => void;
+}
+
+let failedQueue: QueuedRequest[] = [];
+
+const processQueue = (error: unknown, token: string | null = null) => {
   failedQueue.forEach((prom) => {
     if (error) {
       prom.reject(error);

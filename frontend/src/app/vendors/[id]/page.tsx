@@ -77,6 +77,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
   const [showSourcesFor, setShowSourcesFor] = useState<string | null>(null);
   const [sources, setSources] = useState<SourceResult | null>(null);
   const [loadingSources, setLoadingSources] = useState(false);
+  const [sourcesError, setSourcesError] = useState('');
   const [jobsPage, setJobsPage] = useState(1);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -245,12 +246,14 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
     if (showSourcesFor === statement) {
       setShowSourcesFor(null);
       setSources(null);
+      setSourcesError('');
       return;
     }
 
     try {
       setLoadingSources(true);
       setShowSourcesFor(statement);
+      setSourcesError('');
 
       const response = await apiClient.get(`/vendors/${params.id}/sources`, {
         params: { statement },
@@ -259,6 +262,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       setSources(response.data);
     } catch (err) {
       console.error('Failed to fetch sources:', err);
+      setSourcesError(ErrorMessages.extraction.sources(err));
       setSources(null);
     } finally {
       setLoadingSources(false);
@@ -667,7 +671,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                   </div>
                 )}
                 {showSourcesFor === 'data_categories' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -697,7 +701,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                   </div>
                 )}
                 {showSourcesFor === 'regions' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -743,7 +747,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                   </div>
                 )}
                 {showSourcesFor === 'subProcessors' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -760,7 +764,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 </div>
                 <div className="text-sm text-gray-700">{vendor.facts.servicesSupported ?? 'Not specified'}</div>
                 {showSourcesFor === 'servicesSupported' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -777,7 +781,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 </div>
                 <div className="text-sm text-gray-700">{vendor.facts.businessFunctions ?? 'Not specified'}</div>
                 {showSourcesFor === 'businessFunctions' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -794,7 +798,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 </div>
                 <div className="text-sm text-gray-700">{vendor.facts.securityHighlights ?? 'Not specified'}</div>
                 {showSourcesFor === 'securityHighlights' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -811,7 +815,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 </div>
                 <div className="text-sm text-gray-700">{vendor.facts.impactIfCompromised ?? 'Not specified'}</div>
                 {showSourcesFor === 'impactIfCompromised' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -865,7 +869,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                   </div>
                 </div>
                 {showSourcesFor === 'regulatoryRelevance' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
             </div>
@@ -1193,14 +1197,33 @@ function UpdateVendorModal({
 function SourcesDisplay({
   sources,
   loading,
+  error,
 }: {
   sources: SourceResult | null;
   loading: boolean;
+  error?: string;
 }) {
   if (loading) {
     return (
       <div className="mt-3 p-3 bg-gray-50 rounded-lg">
         <div className="text-sm text-gray-600">Loading sources...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+        <div className="flex items-center">
+          <svg className="w-4 h-4 text-red-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <span className="text-sm text-red-800">{error}</span>
+        </div>
       </div>
     );
   }

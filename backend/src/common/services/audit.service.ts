@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 
 export interface AuditLogData {
@@ -64,7 +65,7 @@ export class AuditService {
       offset?: number;
     }
   ) {
-    const where: any = { tenantId };
+    const where: Prisma.AuditLogWhereInput = { tenantId };
 
     if (options?.userId) where.userId = options.userId;
     if (options?.action) where.action = options.action;
@@ -103,7 +104,7 @@ export class AuditService {
    * E2E FIX: Includes time-based counts (today, this week, this month)
    */
   async getStatistics(tenantId: string, startDate?: Date, endDate?: Date) {
-    const where: any = { tenantId };
+    const where: Prisma.AuditLogWhereInput = { tenantId };
 
     if (startDate || endDate) {
       where.createdAt = {};

@@ -146,4 +146,9 @@ export const ErrorMessages = {
       return message || 'Registration failed. Please check your information and try again.';
     },
   },
+  audit: {
+    logs: (error: unknown) => getErrorMessage(error, 'Failed to load audit logs. Please refresh the page.'),
+    statistics: (error: unknown) =>
+      getErrorMessage(error, 'Failed to load audit statistics. Some data may be unavailable.'),
+  },
 };

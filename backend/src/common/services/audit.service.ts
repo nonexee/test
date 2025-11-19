@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 
 export interface AuditLogData {
@@ -49,7 +50,8 @@ export class AuditService {
   }
 
   /**
-   * Query audit logs for a tenant
+   * Query audit logs for a tenant with pagination support
+   * E2E FIX: Returns both logs and total count for proper pagination
    */
   async findByTenant(
     tenantId: string,
@@ -63,7 +65,7 @@ export class AuditService {
       offset?: number;
     }
   ) {
-    const where: any = { tenantId };
+    const where: Prisma.AuditLogWhereInput = { tenantId };
 
     if (options?.userId) where.userId = options.userId;
     if (options?.action) where.action = options.action;
@@ -75,28 +77,34 @@ export class AuditService {
       if (options.endDate) where.createdAt.lte = options.endDate;
     }
 
-    return this.prisma.auditLog.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: options?.limit || 100,
-      skip: options?.offset || 0,
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            role: true,
+    const [logs, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: options?.limit || 100,
+        skip: options?.offset || 0,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+            },
           },
         },
-      },
-    });
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return { logs, total };
   }
 
   /**
    * Get audit statistics for a tenant
+   * E2E FIX: Includes time-based counts (today, this week, this month)
    */
   async getStatistics(tenantId: string, startDate?: Date, endDate?: Date) {
-    const where: any = { tenantId };
+    const where: Prisma.AuditLogWhereInput = { tenantId };
 
     if (startDate || endDate) {
       where.createdAt = {};
@@ -104,8 +112,32 @@ export class AuditService {
       if (endDate) where.createdAt.lte = endDate;
     }
 
-    const [totalActions, actionBreakdown, resourceBreakdown] = await Promise.all([
+    // Get time boundaries for time-based statistics
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - 7);
+    const monthStart = new Date(now);
+    monthStart.setMonth(now.getMonth() - 1);
+
+    const [
+      totalActions,
+      actionsToday,
+      actionsThisWeek,
+      actionsThisMonth,
+      actionBreakdown,
+      resourceBreakdown,
+    ] = await Promise.all([
       this.prisma.auditLog.count({ where }),
+      this.prisma.auditLog.count({
+        where: { tenantId, createdAt: { gte: todayStart } },
+      }),
+      this.prisma.auditLog.count({
+        where: { tenantId, createdAt: { gte: weekStart } },
+      }),
+      this.prisma.auditLog.count({
+        where: { tenantId, createdAt: { gte: monthStart } },
+      }),
       this.prisma.auditLog.groupBy({
         by: ['action'],
         where,
@@ -120,6 +152,9 @@ export class AuditService {
 
     return {
       totalActions,
+      actionsToday,
+      actionsThisWeek,
+      actionsThisMonth,
       actionBreakdown: actionBreakdown.map((item) => ({
         action: item.action,
         count: item._count,

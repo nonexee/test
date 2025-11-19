@@ -1,0 +1,22 @@
+# Robots.txt for VendorFlow AI
+# Production robots.txt - adjust based on deployment environment
+
+# Allow all crawlers
+User-agent: *
+
+# Disallow authentication pages
+Disallow: /auth/
+Disallow: /auth/login
+Disallow: /auth/register
+
+# Disallow API routes (if exposed publicly)
+Disallow: /api/
+
+# Allow everything else (vendors, compliance, etc.)
+Allow: /
+
+# Sitemap location (update with your actual domain)
+# Sitemap: https://yourdomain.com/sitemap.xml
+
+# Crawl-delay (optional, reduces server load)
+# Crawl-delay: 1

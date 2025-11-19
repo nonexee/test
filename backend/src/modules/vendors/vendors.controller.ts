@@ -13,6 +13,8 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
   BadRequestException,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
@@ -30,14 +32,16 @@ import { CreateVendorDto } from './dto/create-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { MagicByteFileValidator } from '../../common/validators/magic-byte-file.validator';
 import { CurrentUser, CurrentUserData } from '../../common/decorators/current-user.decorator';
-import { VendorType, VendorCriticality } from '@prisma/client';
+import { VendorType, VendorCriticality, UserRole } from '@prisma/client';
 
 @ApiTags('vendors')
 @ApiBearerAuth('JWT-auth')
 @Controller('vendors')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard) // FIX GAP #12: Add RBAC
 export class VendorsController {
   constructor(private vendorsService: VendorsService) {}
 
@@ -70,32 +74,46 @@ export class VendorsController {
   @Throttle({ default: { limit: 100, ttl: 60000 } }) // 100 requests per minute
   @ApiOperation({ summary: 'Get vendor by ID', description: 'Returns a single vendor with all related data' })
   @ApiParam({ name: 'id', type: String, description: 'Vendor UUID' })
+  @ApiQuery({ name: 'jobsPage', required: false, type: Number, description: 'Extraction jobs page number (default: 1)' })
+  @ApiQuery({ name: 'jobsLimit', required: false, type: Number, description: 'Extraction jobs per page (default: 10)' })
   @ApiResponse({ status: 200, description: 'Vendor details' })
   @ApiResponse({ status: 404, description: 'Vendor not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
-  async findOne(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return this.vendorsService.findOne(id, user.tenantId);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+    @Query('jobsPage') jobsPage?: string,
+    @Query('jobsLimit') jobsLimit?: string,
+  ) {
+    return this.vendorsService.findOne(id, user.tenantId, {
+      jobsPage: jobsPage ? parseInt(jobsPage, 10) : undefined,
+      jobsLimit: jobsLimit ? parseInt(jobsLimit, 10) : undefined,
+    });
   }
 
   @Post()
+  @Roles(UserRole.ADMIN) // FIX GAP #12: RBAC - Only admins can create vendors
   @Throttle({ default: { limit: 20, ttl: 60000 } }) // 20 requests per minute
-  @ApiOperation({ summary: 'Create vendor', description: 'Creates a new vendor for the authenticated user\'s tenant' })
+  @ApiOperation({ summary: 'Create vendor', description: 'Creates a new vendor for the authenticated user\'s tenant. Requires ADMIN role.' })
   @ApiResponse({ status: 201, description: 'Vendor created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Requires ADMIN role' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async create(@Body() dto: CreateVendorDto, @CurrentUser() user: CurrentUserData) {
     return this.vendorsService.create(user.tenantId, dto, user.userId);
   }
 
   @Patch(':id')
+  @Roles(UserRole.ADMIN) // FIX GAP #12: RBAC - Only admins can update vendors
   @Throttle({ default: { limit: 50, ttl: 60000 } }) // 50 requests per minute
-  @ApiOperation({ summary: 'Update vendor', description: 'Updates an existing vendor' })
+  @ApiOperation({ summary: 'Update vendor', description: 'Updates an existing vendor. Requires ADMIN role.' })
   @ApiParam({ name: 'id', type: String, description: 'Vendor UUID' })
   @ApiResponse({ status: 200, description: 'Vendor updated successfully' })
   @ApiResponse({ status: 404, description: 'Vendor not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Requires ADMIN role' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async update(
     @Param('id') id: string,
@@ -106,23 +124,29 @@ export class VendorsController {
   }
 
   @Delete(':id')
+  @Roles(UserRole.ADMIN) // FIX GAP #12: RBAC - Only admins can delete vendors
+  @HttpCode(HttpStatus.NO_CONTENT) // FIX GAP #5: Return 204 No Content for DELETE
   @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 requests per minute (destructive operation)
-  @ApiOperation({ summary: 'Delete vendor', description: 'Permanently deletes a vendor and all related data' })
+  @ApiOperation({ summary: 'Delete vendor', description: 'Permanently deletes a vendor and all related data. Requires ADMIN role.' })
   @ApiParam({ name: 'id', type: String, description: 'Vendor UUID' })
-  @ApiResponse({ status: 200, description: 'Vendor deleted successfully' })
+  @ApiResponse({ status: 204, description: 'Vendor deleted successfully (no content)' })
   @ApiResponse({ status: 404, description: 'Vendor not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Requires ADMIN role' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async delete(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return this.vendorsService.delete(id, user.tenantId, user.userId);
+    await this.vendorsService.delete(id, user.tenantId, user.userId);
+    // No return for 204 No Content
   }
 
   @Post(':id/documents')
-  @ApiOperation({ summary: 'Upload document', description: 'Upload a vendor document (PDF, DOC, DOCX, TXT, CSV, XLS, XLSX). Max 10MB. Triggers automatic fact extraction.' })
+  @Roles(UserRole.ADMIN) // FIX GAP #12: RBAC - Only admins can upload documents
+  @ApiOperation({ summary: 'Upload document', description: 'Upload a vendor document (PDF, DOC, DOCX, TXT, CSV, XLS, XLSX). Max 10MB. Triggers automatic fact extraction. Requires ADMIN role.' })
   @ApiParam({ name: 'id', type: String, description: 'Vendor UUID' })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({ status: 201, description: 'Document uploaded successfully' })
   @ApiResponse({ status: 400, description: 'Invalid file or file type' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Requires ADMIN role' })
   @ApiResponse({ status: 413, description: 'File too large (max 10MB)' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded (10 uploads/min)' })
   @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 uploads per minute
@@ -155,10 +179,12 @@ export class VendorsController {
   }
 
   @Post(':id/extract')
-  @ApiOperation({ summary: 'Trigger AI extraction', description: 'Manually trigger AI-powered fact extraction for a vendor. Requires uploaded documents. Returns extraction job.' })
+  @Roles(UserRole.ADMIN) // FIX GAP #12: RBAC - Only admins can trigger extractions
+  @ApiOperation({ summary: 'Trigger AI extraction', description: 'Manually trigger AI-powered fact extraction for a vendor. Requires uploaded documents. Returns extraction job. Requires ADMIN role.' })
   @ApiParam({ name: 'id', type: String, description: 'Vendor UUID' })
   @ApiResponse({ status: 201, description: 'Extraction job created successfully' })
   @ApiResponse({ status: 400, description: 'No documents uploaded' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Requires ADMIN role' })
   @ApiResponse({ status: 404, description: 'Vendor not found' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded (5 extractions/min)' })
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 extractions per minute
@@ -167,6 +193,27 @@ export class VendorsController {
     @CurrentUser() user: CurrentUserData,
   ) {
     return this.vendorsService.triggerExtraction(id, user.tenantId, user.userId);
+  }
+
+  @Delete(':vendorId/documents/:documentId')
+  @Roles(UserRole.ADMIN) // FIX GAP #12: RBAC - Only admins can delete documents
+  @HttpCode(HttpStatus.NO_CONTENT) // FIX GAP #3: Document deletion endpoint
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // 20 deletions per minute
+  @ApiOperation({ summary: 'Delete document', description: 'Delete a vendor document permanently. Requires ADMIN role.' })
+  @ApiParam({ name: 'vendorId', type: String, description: 'Vendor UUID' })
+  @ApiParam({ name: 'documentId', type: String, description: 'Document UUID' })
+  @ApiResponse({ status: 204, description: 'Document deleted successfully (no content)' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Requires ADMIN role' })
+  @ApiResponse({ status: 404, description: 'Document or vendor not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
+  async deleteDocument(
+    @Param('vendorId') vendorId: string,
+    @Param('documentId') documentId: string,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    await this.vendorsService.deleteDocument(documentId, vendorId, user.tenantId, user.userId);
+    // No return for 204 No Content
   }
 
   @Get(':id/sources')

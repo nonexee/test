@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import apiClient from '@/lib/api';
 import { formatDateShort } from '@/lib/utils/date';
+import * as XLSX from 'xlsx';
 
 interface DoraVendor {
   id: string;
@@ -147,6 +148,66 @@ export default function DoraRegisterPage() {
     document.body.removeChild(link);
   };
 
+  const exportToXLSX = () => {
+    const headers = [
+      'Vendor Name',
+      'Type',
+      'Criticality',
+      'Status',
+      'Business Functions',
+      'Services Supported',
+      'Data Categories',
+      'Regions',
+      'Sub-processors',
+      'Security Highlights',
+      'Impact if Compromised',
+      'DORA Relevant',
+      'NIS2 Relevant',
+      'AI Act Relevant',
+      'Last Extracted',
+    ];
+
+    const rows = vendors.map((vendor) => [
+      vendor.name,
+      vendor.type.replace(/_/g, ' '),
+      vendor.criticality,
+      vendor.status,
+      vendor.facts?.businessFunctions ?? '',
+      vendor.facts?.servicesSupported ?? '',
+      (vendor.facts?.dataCategories ?? []).join('; '),
+      (vendor.facts?.regions ?? []).join('; '),
+      (vendor.facts?.subProcessors ?? []).map((sp) => `${sp.name} (${sp.region})`).join('; '),
+      vendor.facts?.securityHighlights ?? '',
+      vendor.facts?.impactIfCompromised ?? '',
+      vendor.facts?.regulatoryRelevance?.dora ? 'Yes' : 'No',
+      vendor.facts?.regulatoryRelevance?.nis2 ? 'Yes' : 'No',
+      vendor.facts?.regulatoryRelevance?.ai_act ? 'Yes' : 'No',
+      vendor.facts?.lastExtractionAt ? formatDateShort(vendor.facts.lastExtractionAt) : '',
+    ]);
+
+    // Create workbook and worksheet
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'DORA Register');
+
+    // Auto-size columns
+    const maxWidth = 50; // Maximum column width
+    const colWidths = headers.map((_, colIndex) => {
+      const columnValues = [headers[colIndex], ...rows.map(row => String(row[colIndex] ?? ''))];
+      const maxLength = Math.max(...columnValues.map(val => String(val).length));
+      return { wch: Math.min(maxLength + 2, maxWidth) };
+    });
+    ws['!cols'] = colWidths;
+
+    // Generate filename
+    const sanitizedName = tenant?.name?.replace(/[/\\:*?"<>|]/g, '-') || 'export';
+    const date = new Date().toISOString().split('T')[0];
+    const filename = `dora-register-${sanitizedName}-${date}.xlsx`;
+
+    // Download file
+    XLSX.writeFile(wb, filename);
+  };
+
   if (authLoading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -174,16 +235,28 @@ export default function DoraRegisterPage() {
               <p className="text-sm text-gray-500 mt-1">Organization: {tenant.name}</p>
             )}
           </div>
-          <button
-            onClick={exportToCSV}
-            disabled={vendors.length === 0}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Export to CSV
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={exportToCSV}
+              disabled={vendors.length === 0}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Export to CSV
+            </button>
+            <button
+              onClick={exportToXLSX}
+              disabled={vendors.length === 0}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Export to XLSX
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -250,6 +323,7 @@ export default function DoraRegisterPage() {
                     </div>
                     <Link
                       href={`/vendors/${vendor.id}`}
+                      prefetch={true}
                       className="text-blue-600 hover:underline text-sm"
                     >
                       View Details →

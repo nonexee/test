@@ -14,6 +14,7 @@ import { PrismaModule } from './modules/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { VendorsModule } from './modules/vendors/vendors.module';
 import { QueueModule } from './modules/queue/queue.module';
+import { AuditModule } from './modules/audit/audit.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { QueueModule } from './modules/queue/queue.module';
     AuthModule,
     VendorsModule,
     QueueModule,
+    AuditModule, // FIX GAP #2: Audit logs API
   ],
   controllers: [],
   providers: [

@@ -7,6 +7,9 @@ import axios from 'axios';
 import { useAuth } from '@/lib/auth';
 import apiClient from '@/lib/api';
 import { formatDate } from '@/lib/utils/date';
+import { ErrorMessages } from '@/lib/utils/errors';
+import { apiCache, CacheKeys } from '@/lib/utils/cache';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface VendorDetail {
   id: string;
@@ -40,7 +43,14 @@ interface VendorDetail {
     status: string;
     createdAt: string;
     finishedAt: string | null;
+    errorMessage?: string | null; // FIX GAP #10
   }>;
+  extractionJobsMetadata?: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
 }
 
 interface SourceResult {
@@ -68,6 +78,14 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
   const [showSourcesFor, setShowSourcesFor] = useState<string | null>(null);
   const [sources, setSources] = useState<SourceResult | null>(null);
   const [loadingSources, setLoadingSources] = useState(false);
+  const [sourcesError, setSourcesError] = useState('');
+  const [jobsPage, setJobsPage] = useState(1);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deletingDocument, setDeletingDocument] = useState<string | null>(null); // FIX GAP #9
+  const [showDeleteDocConfirm, setShowDeleteDocConfirm] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false); // FIX GAP #4
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -105,19 +123,33 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
     }
   }, [vendor, extracting]);
 
-  const fetchVendorDetail = async () => {
+  const fetchVendorDetail = async (page?: number, skipCache = false) => {
     try {
       setLoading(true);
-      const response = await apiClient.get(`/vendors/${params.id}`);
+      const currentPage = page ?? jobsPage;
+
+      // Generate cache key
+      const cacheKey = CacheKeys.vendors.detail(params.id, currentPage);
+
+      // Try to get from cache first (unless skipCache is true)
+      if (!skipCache) {
+        const cachedData = apiCache.get<VendorDetail>(cacheKey);
+        if (cachedData) {
+          setVendor(cachedData);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Fetch from API
+      const response = await apiClient.get(`/vendors/${params.id}?jobsPage=${currentPage}&jobsLimit=10`);
       setVendor(response.data);
       setError('');
+
+      // Store in cache (3 minutes TTL for detail page since it updates more frequently)
+      apiCache.set(cacheKey, response.data, 3 * 60 * 1000);
     } catch (err) {
-      const errorMessage = axios.isAxiosError(err)
-        ? err.response?.data?.message || 'Failed to fetch vendor details'
-        : err instanceof Error
-        ? err.message
-        : 'Unknown error occurred';
-      setError(errorMessage);
+      setError(ErrorMessages.vendor.fetch(err));
     } finally {
       setLoading(false);
     }
@@ -129,7 +161,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       // File size validation (10MB max)
       const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
       if (file.size > MAX_FILE_SIZE) {
-        setUploadError(`File too large. Maximum size is 10MB (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+        setUploadError(`File is too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Please select a file smaller than 10MB.`);
         return;
       }
 
@@ -144,7 +176,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       ];
 
       if (!allowedTypes.includes(file.type)) {
-        setUploadError('Invalid file type. Please upload PDF, DOC, DOCX, TXT, CSV, XLS, or XLSX files.');
+        setUploadError(`Unsupported file type (${file.type}). Please upload PDF, DOC, DOCX, TXT, CSV, XLS, or XLSX files.`);
         return;
       }
 
@@ -177,15 +209,11 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
         if (fileInput) fileInput.value = '';
       }
 
-      // Refresh vendor data
-      await fetchVendorDetail();
+      // Refresh vendor data (skip cache to get fresh data)
+      apiCache.delete(CacheKeys.vendors.detail(params.id, jobsPage));
+      await fetchVendorDetail(undefined, true);
     } catch (err) {
-      const errorMessage = axios.isAxiosError(err)
-        ? err.response?.data?.message || 'Failed to upload document'
-        : err instanceof Error
-        ? err.message
-        : 'Unknown error occurred';
-      setUploadError(errorMessage);
+      setUploadError(ErrorMessages.document.upload(err));
     } finally {
       setUploadingFile(false);
     }
@@ -198,30 +226,37 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
 
       await apiClient.post(`/vendors/${params.id}/extract`);
 
-      // Refresh vendor data to show new extraction job
+      // Refresh vendor data to show new extraction job (skip cache)
       // Don't set extracting to false - let polling handle it
-      await fetchVendorDetail();
+      apiCache.delete(CacheKeys.vendors.detail(params.id, jobsPage));
+      await fetchVendorDetail(undefined, true);
     } catch (err) {
-      const errorMessage = axios.isAxiosError(err)
-        ? err.response?.data?.message || 'Failed to trigger extraction'
-        : err instanceof Error
-        ? err.message
-        : 'Unknown error occurred';
-      setExtractError(errorMessage);
+      setExtractError(ErrorMessages.extraction.trigger(err));
       setExtracting(false); // Only set to false on error
     }
+  };
+
+  /**
+   * FIX GAP #10: Retry extraction functionality
+   * Retries a failed extraction job
+   */
+  const handleRetryExtraction = async () => {
+    // Same as trigger extraction - creates a new job
+    await handleTriggerExtraction();
   };
 
   const handleShowSources = async (statement: string) => {
     if (showSourcesFor === statement) {
       setShowSourcesFor(null);
       setSources(null);
+      setSourcesError('');
       return;
     }
 
     try {
       setLoadingSources(true);
       setShowSourcesFor(statement);
+      setSourcesError('');
 
       const response = await apiClient.get(`/vendors/${params.id}/sources`, {
         params: { statement },
@@ -230,9 +265,63 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
       setSources(response.data);
     } catch (err) {
       console.error('Failed to fetch sources:', err);
+      setSourcesError(ErrorMessages.extraction.sources(err));
       setSources(null);
     } finally {
       setLoadingSources(false);
+    }
+  };
+
+  const handleDeleteVendor = async () => {
+    try {
+      setDeleting(true);
+      await apiClient.delete(`/vendors/${params.id}`);
+      // Redirect to vendors list after successful deletion
+      router.push('/vendors');
+    } catch (err) {
+      setError(ErrorMessages.vendor.delete(err));
+      setShowDeleteModal(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  /**
+   * Show confirmation dialog for document deletion
+   */
+  const confirmDeleteDocument = (documentId: string) => {
+    setDocumentToDelete(documentId);
+    setShowDeleteDocConfirm(true);
+  };
+
+  /**
+   * FIX GAP #9: Delete document functionality
+   * GAP FIX: Added confirmation dialog before deletion
+   */
+  const handleDeleteDocument = async () => {
+    if (!documentToDelete) return;
+
+    try {
+      setDeletingDocument(documentToDelete);
+      await apiClient.delete(`/vendors/${params.id}/documents/${documentToDelete}`);
+
+      // Update vendor state to remove deleted document
+      setVendor((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          documents: prev.documents.filter((doc) => doc.id !== documentToDelete),
+        };
+      });
+
+      // Clear any errors
+      setError('');
+      setShowDeleteDocConfirm(false);
+      setDocumentToDelete(null);
+    } catch (err) {
+      setError(ErrorMessages.document.delete(err));
+    } finally {
+      setDeletingDocument(null);
     }
   };
 
@@ -324,8 +413,29 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
           >
             &larr; Back to Vendors
           </Link>
-          <h1 className="text-3xl font-bold text-gray-900">{vendor.name}</h1>
-          <p className="text-gray-600 mt-1">Vendor Details and Documentation</p>
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">{vendor.name}</h1>
+              <p className="text-gray-600 mt-1">Vendor Details and Documentation</p>
+            </div>
+            {/* FIX GAP #12: Only show Edit/Delete for ADMIN users */}
+            {user?.role === 'ADMIN' && (
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Edit Vendor
+                </button>
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                >
+                  Delete Vendor
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Vendor Information Card */}
@@ -367,9 +477,10 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">Documents</h2>
 
-          {/* Upload Section */}
-          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-medium mb-3">Upload New Document</h3>
+          {/* Upload Section - FIX GAP #12: Only show for ADMIN users */}
+          {user?.role === 'ADMIN' && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-medium mb-3">Upload New Document</h3>
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-3">
               <div className="md:col-span-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -415,10 +526,11 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 </div>
               </div>
             </div>
-            {uploadError && (
-              <div className="mt-2 text-sm text-red-600">{uploadError}</div>
-            )}
-          </div>
+              {uploadError && (
+                <div className="mt-2 text-sm text-red-600">{uploadError}</div>
+              )}
+            </div>
+          )}
 
           {/* Documents List */}
           {vendor.documents.length === 0 ? (
@@ -439,6 +551,9 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Uploaded At
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -453,6 +568,21 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-500">{formatDate(doc.uploadedAt)}</div>
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {/* FIX GAP #12: Only show Delete for ADMIN users */}
+                        {user?.role === 'ADMIN' ? (
+                          <button
+                            onClick={() => confirmDeleteDocument(doc.id)}
+                            disabled={deletingDocument === doc.id}
+                            className="text-red-600 hover:text-red-900 text-sm font-medium disabled:text-gray-400"
+                            aria-label={`Delete document ${doc.fileName}`}
+                          >
+                            {deletingDocument === doc.id ? 'Deleting...' : 'Delete'}
+                          </button>
+                        ) : (
+                          <span className="text-sm text-gray-400">-</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -465,13 +595,16 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold">Extracted Facts</h2>
-            <button
-              onClick={handleTriggerExtraction}
-              disabled={extracting || vendor.documents.length === 0}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              {extracting ? 'Triggering...' : 'Trigger Extraction'}
-            </button>
+            {/* FIX GAP #12: Only show Trigger Extraction for ADMIN users */}
+            {user?.role === 'ADMIN' && (
+              <button
+                onClick={handleTriggerExtraction}
+                disabled={extracting || vendor.documents.length === 0}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {extracting ? 'Triggering...' : 'Trigger Extraction'}
+              </button>
+            )}
           </div>
 
           {extractError && (
@@ -513,8 +646,20 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
           {vendor.facts && (
             <div className="space-y-6">
               {/* Last Extracted */}
-              <div className="text-sm text-gray-500 mb-4">
-                Last extracted: {vendor.facts.lastExtractionAt ? formatDate(vendor.facts.lastExtractionAt) : 'Not extracted yet'}
+              <div className="text-sm text-gray-500 mb-4 space-y-1">
+                <div>Last extracted: {vendor.facts.lastExtractionAt ? formatDate(vendor.facts.lastExtractionAt) : 'Not extracted yet'}</div>
+                {vendor.facts.extractionConfidence != null && (
+                  <div className="flex items-center gap-2">
+                    <span>Extraction confidence:</span>
+                    <span className={`font-medium ${
+                      vendor.facts.extractionConfidence >= 0.8 ? 'text-green-600' :
+                      vendor.facts.extractionConfidence >= 0.6 ? 'text-yellow-600' :
+                      'text-orange-600'
+                    }`}>
+                      {(vendor.facts.extractionConfidence * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Data Categories */}
@@ -543,7 +688,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                   </div>
                 )}
                 {showSourcesFor === 'data_categories' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -573,7 +718,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                   </div>
                 )}
                 {showSourcesFor === 'regions' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -619,7 +764,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                   </div>
                 )}
                 {showSourcesFor === 'subProcessors' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -636,7 +781,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 </div>
                 <div className="text-sm text-gray-700">{vendor.facts.servicesSupported ?? 'Not specified'}</div>
                 {showSourcesFor === 'servicesSupported' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -653,7 +798,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 </div>
                 <div className="text-sm text-gray-700">{vendor.facts.businessFunctions ?? 'Not specified'}</div>
                 {showSourcesFor === 'businessFunctions' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -670,7 +815,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 </div>
                 <div className="text-sm text-gray-700">{vendor.facts.securityHighlights ?? 'Not specified'}</div>
                 {showSourcesFor === 'securityHighlights' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -687,7 +832,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                 </div>
                 <div className="text-sm text-gray-700">{vendor.facts.impactIfCompromised ?? 'Not specified'}</div>
                 {showSourcesFor === 'impactIfCompromised' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
 
@@ -741,7 +886,7 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                   </div>
                 </div>
                 {showSourcesFor === 'regulatoryRelevance' && (
-                  <SourcesDisplay sources={sources} loading={loadingSources} />
+                  <SourcesDisplay sources={sources} loading={loadingSources} error={sourcesError} />
                 )}
               </div>
             </div>
@@ -751,59 +896,332 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
         {/* Extraction Jobs History */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-xl font-semibold mb-4">Extraction Jobs History</h2>
+          {vendor.extractionJobsMetadata && vendor.extractionJobsMetadata.total > 0 && (
+            <div className="mb-4 text-sm text-gray-600">
+              Showing {vendor.extractionJobs.length} of {vendor.extractionJobsMetadata.total} jobs
+            </div>
+          )}
           {vendor.extractionJobs.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               No extraction jobs yet.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Job ID
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Created At
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Completed At
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {vendor.extractionJobs.map((job) => (
-                    <tr key={job.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-mono text-gray-900">{job.id.slice(0, 8)}...</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getJobStatusColor(
-                            job.status
-                          )}`}
-                        >
-                          {job.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">{formatDate(job.createdAt)}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">
-                          {job.finishedAt ? formatDate(job.finishedAt) : '-'}
-                        </div>
-                      </td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Job ID
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Created At
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Completed At
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Error / Actions
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {vendor.extractionJobs.map((job) => (
+                      <tr key={job.id}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-mono text-gray-900">{job.id.slice(0, 8)}...</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getJobStatusColor(
+                              job.status
+                            )}`}
+                          >
+                            {job.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">{formatDate(job.createdAt)}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">
+                            {job.finishedAt ? formatDate(job.finishedAt) : '-'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {/* FIX GAP #10: Error messages and retry buttons */}
+                          {job.status === 'ERROR' && (
+                            <div className="space-y-2">
+                              {job.errorMessage && (
+                                <div className="text-sm text-red-600 max-w-xs truncate" title={job.errorMessage}>
+                                  {job.errorMessage}
+                                </div>
+                              )}
+                              <button
+                                onClick={() => handleRetryExtraction()}
+                                disabled={extracting}
+                                className="text-sm text-blue-600 hover:text-blue-800 font-medium disabled:text-gray-400"
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          )}
+                          {job.status === 'RUNNING' && (
+                            <div className="flex items-center gap-2 text-sm text-blue-600">
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                              <span>Processing...</span>
+                            </div>
+                          )}
+                          {job.status === 'SUCCESS' && (
+                            <div className="text-sm text-green-600">✓ Completed</div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Pagination Controls */}
+              {vendor.extractionJobsMetadata && vendor.extractionJobsMetadata.totalPages > 1 && (
+                <div className="mt-4 flex items-center justify-between">
+                  <div className="text-sm text-gray-600">
+                    Page {vendor.extractionJobsMetadata.page} of {vendor.extractionJobsMetadata.totalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        const newPage = jobsPage - 1;
+                        setJobsPage(newPage);
+                        fetchVendorDetail(newPage);
+                      }}
+                      disabled={jobsPage === 1}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newPage = jobsPage + 1;
+                        setJobsPage(newPage);
+                        fetchVendorDetail(newPage);
+                      }}
+                      disabled={jobsPage === vendor.extractionJobsMetadata.totalPages}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h2 className="text-2xl font-bold mb-4 text-red-600">Delete Vendor</h2>
+            <p className="mb-4 text-gray-700">
+              Are you sure you want to delete <strong>{vendor.name}</strong>?
+            </p>
+            <p className="mb-6 text-sm text-gray-600">
+              This action cannot be undone. All documents, extracted facts, and extraction jobs associated with this vendor will be permanently deleted.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteVendor}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
+              >
+                {deleting && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                )}
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Vendor Modal - FIX GAP #4 */}
+      {showEditModal && vendor && (
+        <UpdateVendorModal
+          vendor={vendor}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={(updatedVendor) => {
+            setVendor({ ...vendor, ...updatedVendor });
+            setShowEditModal(false);
+          }}
+        />
+      )}
+
+      {/* Document Deletion Confirmation Dialog - GAP FIX */}
+      <ConfirmDialog
+        isOpen={showDeleteDocConfirm}
+        onClose={() => {
+          setShowDeleteDocConfirm(false);
+          setDocumentToDelete(null);
+        }}
+        onConfirm={handleDeleteDocument}
+        title="Delete Document"
+        message="Are you sure you want to delete this document? This action cannot be undone and will permanently remove the document from the vendor profile."
+        confirmText="Delete Document"
+        cancelText="Cancel"
+        variant="danger"
+        loading={deletingDocument !== null}
+      />
+    </div>
+  );
+}
+
+/**
+ * FIX GAP #4: Update Vendor Modal Component
+ */
+function UpdateVendorModal({
+  vendor,
+  onClose,
+  onSuccess,
+}: {
+  vendor: VendorDetail;
+  onClose: () => void;
+  onSuccess: (updatedVendor: Partial<VendorDetail>) => void;
+}) {
+  const [name, setName] = useState(vendor.name);
+  const [type, setType] = useState(vendor.type);
+  const [criticality, setCriticality] = useState(vendor.criticality);
+  const [status, setStatus] = useState(vendor.status);
+  const [updating, setUpdating] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUpdating(true);
+    setError('');
+
+    try {
+      const response = await apiClient.patch(`/vendors/${vendor.id}`, {
+        name,
+        type,
+        criticality,
+        status,
+      });
+
+      onSuccess(response.data);
+    } catch (err) {
+      setError(ErrorMessages.vendor.update(err));
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg p-6 max-w-md w-full">
+        <h2 className="text-2xl font-bold mb-4">Edit Vendor</h2>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded text-sm">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Vendor Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              minLength={2}
+              maxLength={255}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Type
+            </label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="SAAS">SaaS</option>
+              <option value="CLOUD_INFRA">Cloud Infrastructure</option>
+              <option value="CONSULTING">Consulting</option>
+              <option value="AI_SERVICE">AI Service</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Criticality
+            </label>
+            <select
+              value={criticality}
+              onChange={(e) => setCriticality(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="LOW">Low</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Status
+            </label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="DRAFT">Draft</option>
+              <option value="IN_REVIEW">In Review</option>
+              <option value="APPROVED">Approved</option>
+            </select>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={updating}
+              className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 disabled:bg-gray-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={updating}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
+            >
+              {updating && (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              )}
+              {updating ? 'Updating...' : 'Update Vendor'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -812,14 +1230,33 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
 function SourcesDisplay({
   sources,
   loading,
+  error,
 }: {
   sources: SourceResult | null;
   loading: boolean;
+  error?: string;
 }) {
   if (loading) {
     return (
       <div className="mt-3 p-3 bg-gray-50 rounded-lg">
         <div className="text-sm text-gray-600">Loading sources...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+        <div className="flex items-center">
+          <svg className="w-4 h-4 text-red-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <span className="text-sm text-red-800">{error}</span>
+        </div>
       </div>
     );
   }

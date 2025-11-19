@@ -80,8 +80,12 @@ export class VendorsService {
     }));
   }
 
-  async findOne(id: string, tenantId: string) {
+  async findOne(id: string, tenantId: string, options?: { jobsPage?: number; jobsLimit?: number }) {
     // Use findFirst with compound WHERE for tenant isolation at query level
+    const jobsPage = options?.jobsPage ?? 1;
+    const jobsLimit = options?.jobsLimit ?? 10;
+    const jobsSkip = (jobsPage - 1) * jobsLimit;
+
     const vendor = await this.prisma.vendor.findFirst({
       where: {
         id,
@@ -98,7 +102,8 @@ export class VendorsService {
           orderBy: {
             createdAt: 'desc',
           },
-          take: 5,
+          skip: jobsSkip,
+          take: jobsLimit,
         },
       },
     });
@@ -107,7 +112,23 @@ export class VendorsService {
       throw new NotFoundException(ErrorMessages.VENDOR.NOT_FOUND);
     }
 
-    return vendor;
+    // Get total count of extraction jobs for pagination
+    const totalJobs = await this.prisma.extractionJob.count({
+      where: {
+        vendorId: id,
+        tenantId,
+      },
+    });
+
+    return {
+      ...vendor,
+      extractionJobsMetadata: {
+        total: totalJobs,
+        page: jobsPage,
+        limit: jobsLimit,
+        totalPages: Math.ceil(totalJobs / jobsLimit),
+      },
+    };
   }
 
   async create(tenantId: string, dto: CreateVendorDto, userId?: string) {
@@ -177,7 +198,7 @@ export class VendorsService {
     return this.findOne(id, tenantId);
   }
 
-  async delete(id: string, tenantId: string, userId?: string) {
+  async delete(id: string, tenantId: string, userId?: string): Promise<void> {
     // Get vendor before deletion for audit trail
     const vendor = await this.findOne(id, tenantId);
 
@@ -211,7 +232,7 @@ export class VendorsService {
       },
     });
 
-    return { message: 'Vendor deleted successfully' };
+    // FIX GAP #5: Return void for 204 No Content
   }
 
   async uploadDocument(
@@ -288,6 +309,68 @@ export class VendorsService {
     }
 
     return document;
+  }
+
+  /**
+   * FIX GAP #3: Delete document endpoint
+   * Delete a document with proper tenant isolation
+   */
+  async deleteDocument(
+    documentId: string,
+    vendorId: string,
+    tenantId: string,
+    userId?: string,
+  ): Promise<void> {
+    // First verify vendor exists and belongs to tenant
+    const vendor = await this.findOne(vendorId, tenantId);
+
+    // Find the document with compound WHERE for tenant isolation
+    const document = await this.prisma.vendorDocument.findFirst({
+      where: {
+        id: documentId,
+        vendorId,
+        vendor: {
+          tenantId, // Ensures tenant isolation
+        },
+      },
+    });
+
+    if (!document) {
+      throw new NotFoundException(ErrorMessages.DOCUMENT.NOT_FOUND_OR_ACCESS_DENIED);
+    }
+
+    // Delete document from database
+    // Cascading is not needed as documents don't have child relations
+    await this.prisma.vendorDocument.delete({
+      where: { id: documentId },
+    });
+
+    // FIX GAP #17: Delete file from Gemini File Search (stub implementation)
+    // Note: Actual deletion from Gemini not yet supported by API
+    // This call logs the deletion attempt for when the API becomes available
+    await this.geminiService.deleteFileFromStore(
+      tenant.geminiFileSearchStoreName,
+      document.geminiFileNameOrId
+    );
+
+    this.logger.log(
+      `Document deleted: ${documentId} (${document.fileName}) from vendor ${vendorId}`,
+    );
+
+    // Audit log
+    await this.auditService.log({
+      tenantId,
+      userId,
+      action: 'DELETE_DOCUMENT',
+      resource: 'DOCUMENT',
+      resourceId: documentId,
+      metadata: {
+        vendorId,
+        vendorName: vendor.name,
+        fileName: document.fileName,
+        fileType: document.fileType,
+      },
+    });
   }
 
   /**

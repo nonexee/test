@@ -32,7 +32,9 @@ export const ErrorMessages = {
   // Document Errors
   DOCUMENT: {
     NOT_FOUND: 'Document not found',
+    NOT_FOUND_OR_ACCESS_DENIED: 'Document not found or access denied',
     UPLOAD_FAILED: 'Failed to upload document',
+    DELETE_FAILED: 'Failed to delete document',
     INVALID_FILE_TYPE: 'Invalid file type. Supported formats: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX',
     FILE_TOO_LARGE: 'File size exceeds maximum limit of 10MB',
     NO_FILE_PROVIDED: 'No file was provided',

@@ -34,7 +34,7 @@ export class AuthController {
           properties: {
             id: { type: 'string', format: 'uuid' },
             email: { type: 'string', format: 'email' },
-            role: { type: 'string', enum: ['ADMIN', 'EDITOR', 'VIEWER'] },
+            role: { type: 'string', enum: ['ADMIN', 'VIEWER'] },
           },
         },
       },
@@ -72,7 +72,7 @@ export class AuthController {
           properties: {
             id: { type: 'string', format: 'uuid' },
             email: { type: 'string', format: 'email' },
-            role: { type: 'string', enum: ['ADMIN', 'EDITOR', 'VIEWER'] },
+            role: { type: 'string', enum: ['ADMIN', 'VIEWER'] },
           },
         },
         tenant: {

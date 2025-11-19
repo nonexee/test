@@ -9,6 +9,7 @@ import apiClient from '@/lib/api';
 import { formatDate } from '@/lib/utils/date';
 import { ErrorMessages } from '@/lib/utils/errors';
 import { apiCache, CacheKeys } from '@/lib/utils/cache';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface VendorDetail {
   id: string;
@@ -82,6 +83,8 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deletingDocument, setDeletingDocument] = useState<string | null>(null); // FIX GAP #9
+  const [showDeleteDocConfirm, setShowDeleteDocConfirm] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false); // FIX GAP #4
 
   useEffect(() => {
@@ -284,24 +287,37 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
   };
 
   /**
-   * FIX GAP #9: Delete document functionality
+   * Show confirmation dialog for document deletion
    */
-  const handleDeleteDocument = async (documentId: string) => {
+  const confirmDeleteDocument = (documentId: string) => {
+    setDocumentToDelete(documentId);
+    setShowDeleteDocConfirm(true);
+  };
+
+  /**
+   * FIX GAP #9: Delete document functionality
+   * GAP FIX: Added confirmation dialog before deletion
+   */
+  const handleDeleteDocument = async () => {
+    if (!documentToDelete) return;
+
     try {
-      setDeletingDocument(documentId);
-      await apiClient.delete(`/vendors/${params.id}/documents/${documentId}`);
+      setDeletingDocument(documentToDelete);
+      await apiClient.delete(`/vendors/${params.id}/documents/${documentToDelete}`);
 
       // Update vendor state to remove deleted document
       setVendor((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
-          documents: prev.documents.filter((doc) => doc.id !== documentId),
+          documents: prev.documents.filter((doc) => doc.id !== documentToDelete),
         };
       });
 
       // Clear any errors
       setError('');
+      setShowDeleteDocConfirm(false);
+      setDocumentToDelete(null);
     } catch (err) {
       setError(ErrorMessages.document.delete(err));
     } finally {
@@ -556,9 +572,10 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
                         {/* FIX GAP #12: Only show Delete for ADMIN users */}
                         {user?.role === 'ADMIN' ? (
                           <button
-                            onClick={() => handleDeleteDocument(doc.id)}
+                            onClick={() => confirmDeleteDocument(doc.id)}
                             disabled={deletingDocument === doc.id}
                             className="text-red-600 hover:text-red-900 text-sm font-medium disabled:text-gray-400"
+                            aria-label={`Delete document ${doc.fileName}`}
                           >
                             {deletingDocument === doc.id ? 'Deleting...' : 'Delete'}
                           </button>
@@ -1050,6 +1067,22 @@ export default function VendorDetailPage({ params }: { params: { id: string } })
           }}
         />
       )}
+
+      {/* Document Deletion Confirmation Dialog - GAP FIX */}
+      <ConfirmDialog
+        isOpen={showDeleteDocConfirm}
+        onClose={() => {
+          setShowDeleteDocConfirm(false);
+          setDocumentToDelete(null);
+        }}
+        onConfirm={handleDeleteDocument}
+        title="Delete Document"
+        message="Are you sure you want to delete this document? This action cannot be undone and will permanently remove the document from the vendor profile."
+        confirmText="Delete Document"
+        cancelText="Cancel"
+        variant="danger"
+        loading={deletingDocument !== null}
+      />
     </div>
   );
 }

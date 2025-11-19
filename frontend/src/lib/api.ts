@@ -44,7 +44,22 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor for error handling and analytics (LOW #48 fix)
+// Track if we're currently refreshing to prevent multiple refresh calls
+let isRefreshing = false;
+let failedQueue: any[] = [];
+
+const processQueue = (error: any, token = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+// Response interceptor for error handling, analytics, and token refresh (GAP #13 fix)
 apiClient.interceptors.response.use(
   (response) => {
     // Track successful API calls
@@ -55,7 +70,7 @@ apiClient.interceptors.response.use(
     }
     return response;
   },
-  (error) => {
+  async (error) => {
     // Track API errors
     analytics.trackError(error, {
       context: 'api_response',
@@ -64,13 +79,56 @@ apiClient.interceptors.response.use(
       status: error.response?.status,
     });
 
-    if (error.response?.status === 401) {
-      // Dispatch custom event for Auth Context to handle
-      // This prevents race conditions between interceptor and component error handlers
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    const originalRequest = error.config;
+
+    // FIX GAP #13: Implement token refresh on 401 errors
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      // Don't retry auth endpoints (login, register, refresh, logout)
+      if (originalRequest.url?.includes('/auth/')) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        }
+        return Promise.reject(error);
+      }
+
+      if (isRefreshing) {
+        // Queue this request while refresh is in progress
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then(() => {
+            return apiClient(originalRequest);
+          })
+          .catch((err) => {
+            return Promise.reject(err);
+          });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        // Attempt to refresh the access token
+        await apiClient.post('/auth/refresh');
+
+        // Refresh successful, process queued requests
+        processQueue(null);
+        isRefreshing = false;
+
+        // Retry the original request
+        return apiClient(originalRequest);
+      } catch (refreshError) {
+        // Refresh failed, user needs to login again
+        processQueue(refreshError, null);
+        isRefreshing = false;
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        }
+        return Promise.reject(refreshError);
       }
     }
+
     return Promise.reject(error);
   }
 );

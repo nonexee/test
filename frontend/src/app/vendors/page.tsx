@@ -143,12 +143,15 @@ export default function VendorsPage() {
             >
               DORA Register
             </Link>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              + Add Vendor
-            </button>
+            {/* FIX GAP #12: Only show "Add Vendor" for ADMIN users */}
+            {user?.role === 'ADMIN' && (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                + Add Vendor
+              </button>
+            )}
           </div>
         </div>
 

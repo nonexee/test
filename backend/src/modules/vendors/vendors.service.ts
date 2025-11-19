@@ -345,11 +345,13 @@ export class VendorsService {
       where: { id: documentId },
     });
 
-    // TODO: Delete file from Gemini File Search when API available
-    // await this.geminiService.deleteFileFromStore(
-    //   tenant.geminiFileSearchStoreName,
-    //   document.geminiFileNameOrId
-    // );
+    // FIX GAP #17: Delete file from Gemini File Search (stub implementation)
+    // Note: Actual deletion from Gemini not yet supported by API
+    // This call logs the deletion attempt for when the API becomes available
+    await this.geminiService.deleteFileFromStore(
+      tenant.geminiFileSearchStoreName,
+      document.geminiFileNameOrId
+    );
 
     this.logger.log(
       `Document deleted: ${documentId} (${document.fileName}) from vendor ${vendorId}`,

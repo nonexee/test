@@ -558,4 +558,47 @@ Output ONLY valid JSON, no explanation.`;
       },
     };
   }
+
+  /**
+   * Delete a file from Gemini File Search store
+   * FIX GAP #17: Implement file deletion (stub until API available)
+   *
+   * ⚠️ STUB METHOD - File deletion not yet supported by Gemini File Search API
+   *
+   * REASON: Gemini File Search deletion API not yet publicly available.
+   * This method currently only logs the deletion attempt without actually
+   * removing the file from Gemini.
+   *
+   * PRODUCTION REPLACEMENT:
+   * When Gemini File Search API becomes available, this should:
+   * 1. Delete the file from the specified File Search store
+   * 2. Handle deletion errors (file not found, permission denied, etc.)
+   * 3. Return deletion confirmation
+   *
+   * CURRENT BEHAVIOR:
+   * - Logs deletion for audit trail
+   * - Does NOT actually delete from Gemini (no API call)
+   * - File record is still deleted from database by caller
+   *
+   * @param storeName - The File Search store identifier
+   * @param fileId - The file identifier to delete
+   */
+  async deleteFileFromStore(storeName: string, fileId: string): Promise<void> {
+    this.logger.log(
+      `[STUB] Would delete file ${fileId} from store ${storeName} (Gemini File Search deletion API not yet available)`
+    );
+
+    // STUB: Replace with actual Gemini File Search deletion when available
+    // Expected future implementation:
+    // const fileSearch = this.genAI.getFileSearch();
+    // await fileSearch.deleteFile({
+    //   storeName,
+    //   fileId,
+    // });
+
+    // For now, we just log the deletion attempt
+    // The file record is deleted from the database by the calling service
+    // When the API becomes available, this will also remove the file from Gemini's storage
+  }
 }
+

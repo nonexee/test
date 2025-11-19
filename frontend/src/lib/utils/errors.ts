@@ -118,6 +118,7 @@ export const ErrorMessages = {
       }
       return message || 'Failed to upload document. Please ensure the file is valid and try again.';
     },
+    delete: (error: unknown) => getErrorMessage(error, 'Failed to delete document. Please try again.'),
   },
   extraction: {
     trigger: (error: unknown) => {
